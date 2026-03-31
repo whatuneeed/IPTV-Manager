@@ -15,7 +15,7 @@
 ## Быстрый старт
 
 ```sh
-sh <(wget -O - https://raw.githubusercontent.com/YOUR_USERNAME/IPTV-Manager/main/IPTV-Manager.sh)
+sh <(wget -O - https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh)
 ```
 
 После установки: `iptv`
