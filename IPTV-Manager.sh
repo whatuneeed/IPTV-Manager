@@ -325,7 +325,7 @@ HTMLEOF
     kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
     sleep 1
 
-    uhttpd -f -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -c /bin/sh &
+    uhttpd -f -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /cgi-bin -i ".cgi=/bin/sh" &
     echo $! > "$HTTPD_PID"
 
     echo_success "HTTP-сервер запущен!"
