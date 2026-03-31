@@ -288,7 +288,7 @@ stop_scheduler() {
 }
 
 # ==========================================
-# HTTP сервер
+# HTTP сервер (uhttpd)
 # ==========================================
 start_http_server() {
     if [ -f "$HTTPD_PID" ] && kill -0 $(cat "$HTTPD_PID") 2>/dev/null; then
@@ -314,14 +314,18 @@ start_http_server() {
 <style>body{font-family:monospace;background:#0f172a;color:#e2e8f0;padding:30px;text-align:center}
 a{color:#3b82f6;text-decoration:none}h1{margin-bottom:20px}</style></head>
 <body>
-<h1>📺 IPTV Manager</h1>
-<p><a href="/cgi-bin/index.cgi">Открыть веб-админку →</a></p>
-<p>Плейлист: <a href="/playlist.m3u">/playlist.m3u</a></p>
+<h1>IPTV Manager</h1>
+<p><a href="/cgi-bin/index.cgi">Open Web Admin</a></p>
+<p>Playlist: <a href="/playlist.m3u">/playlist.m3u</a></p>
 <p>EPG: <a href="/epg.xml">/epg.xml</a></p>
 </body></html>
 HTMLEOF
 
-    busybox httpd -p "$IPTV_PORT" -h /www/iptv -c '/cgi-bin/*.cgi' &
+    # Останавливаем uhttpd на этом порту если есть
+    kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
+    sleep 1
+
+    uhttpd -f -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -c /bin/sh &
     echo $! > "$HTTPD_PID"
 
     echo_success "HTTP-сервер запущен!"
@@ -333,10 +337,13 @@ HTMLEOF
 stop_http_server() {
     if [ -f "$HTTPD_PID" ]; then
         kill $(cat "$HTTPD_PID") 2>/dev/null
+        # Также убиваем по процессу на всякий случай
+        kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
         rm -f "$HTTPD_PID"
         echo_success "HTTP-сервер остановлен"
     else
-        echo_info "HTTP-сервер не запущен"
+        kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
+        echo_info "HTTP-сервер остановлен (по процессу)"
     fi
 }
 
