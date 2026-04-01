@@ -86,36 +86,32 @@ generate_cgi() {
 
     local channels="" group_opts=""
     if [ -f "$PLAYLIST_FILE" ]; then
-        # Generate channels JS via awk
+        # Generate channels JS + embed in HTML
         mkdir -p /www/iptv
-        {
-            echo "var allCh=["
-            awk '
-                /#EXTINF:/ {
-                    name=""; group=""; tvgid=""; logo=""
-                    n=$0
-                    if(match(n,/,/)) name=substr(n,RSTART+1)
-                    gsub(/^[ \t]+|[ \t]+$/,"",name)
-                    if(match(n,/group-title="[^"]*"/)) { group=substr(n,RSTART+12,RLENGTH-13) }
-                    if(match(n,/tvg-id="[^"]*"/)) { tvgid=substr(n,RSTART+9,RLENGTH-10) }
-                    if(match(n,/tvg-logo="[^"]*"/)) { logo=substr(n,RSTART+11,RLENGTH-12) }
-                    if(name=="") name="Unknown"
-                    if(group=="") group="General"
-                }
-                /^http|^https|^rtsp|^rtmp|^udp|^rtp/ {
-                    url=$0
-                    gsub(/\\/, "\\\\", name); gsub(/"/, "\\\"", name)
-                    gsub(/\\/, "\\\\", group); gsub(/"/, "\\\"", group)
-                    gsub(/\\/, "\\\\", url); gsub(/"/, "\\\"", url)
-                    gsub(/\\/, "\\\\", logo); gsub(/"/, "\\\"", logo)
-                    gsub(/\\/, "\\\\", tvgid); gsub(/"/, "\\\"", tvgid)
-                    if(idx>0) printf ","
-                    printf "{i:%d,n:\"%s\",g:\"%s\",u:\"%s\",t:\"%s\",l:\"%s\"}", idx++, name, group, url, tvgid, logo
-                    if(idx>=5000) exit
-                }
-            ' "$PLAYLIST_FILE"
-            echo "];"
-        } > /www/iptv/ch.js
+        awk '
+            /#EXTINF:/ {
+                name=""; group=""; tvgid=""; logo=""
+                n=$0
+                if(match(n,/,/)) name=substr(n,RSTART+1)
+                gsub(/^[ \t]+|[ \t]+$/,"",name)
+                if(match(n,/group-title="[^"]*"/)) { group=substr(n,RSTART+12,RLENGTH-13) }
+                if(match(n,/tvg-id="[^"]*"/)) { tvgid=substr(n,RSTART+9,RLENGTH-10) }
+                if(match(n,/tvg-logo="[^"]*"/)) { logo=substr(n,RSTART+11,RLENGTH-12) }
+                if(name=="") name="Unknown"
+                if(group=="") group="General"
+            }
+            /^http|^https|^rtsp|^rtmp|^udp|^rtp/ {
+                url=$0
+                gsub(/\\/, "\\\\", name); gsub(/"/, "\\\"", name)
+                gsub(/\\/, "\\\\", group); gsub(/"/, "\\\"", group)
+                gsub(/\\/, "\\\\", url); gsub(/"/, "\\\"", url)
+                gsub(/\\/, "\\\\", logo); gsub(/"/, "\\\"", logo)
+                gsub(/\\/, "\\\\", tvgid); gsub(/"/, "\\\"", tvgid)
+                if(idx>0) printf ","
+                printf "{i:%d,n:\"%s\",g:\"%s\",u:\"%s\",t:\"%s\",l:\"%s\"}", idx++, name, group, url, tvgid, logo
+                if(idx>=5000) exit
+            }
+        ' "$PLAYLIST_FILE" > /www/iptv/ch_data.js 2>/dev/null
 
         echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done > /tmp/iptv-go.txt
         group_opts=$(cat /tmp/iptv-go.txt 2>/dev/null)
@@ -363,6 +359,7 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="bg"><button class="b bp bsm" onclick="saveEdit()">Сохранить</button><button class="b bd bsm" onclick="closeModal()">Отмена</button></div></div></div>
 <div class="ft">IPTV Manager v3.2 — OpenWrt</div>
 </div>
+<script src="/ch_data.js"></script>
 <script>
 var API='/cgi-bin/admin.cgi';
 function toggleTheme(){var d=document.documentElement,t=d.getAttribute('data-theme')==='dark'?'light':'dark';d.setAttribute('data-theme',t);document.getElementById('ttb').innerHTML=t==='dark'?'☀️ Тема':'🌙 Тема';try{localStorage.setItem('iptv-theme',t)}catch(e){}}
@@ -422,15 +419,10 @@ function setPlUrl(){var u=document.getElementById('pl-u').value;if(!u){toast('В
 function setEpgUrl(){var u=document.getElementById('epg-u').value;if(!u){toast('Введите ссылку','err');return}act('set_epg_url','url='+encodeURIComponent(u))}
 function saveSched(){var p=document.getElementById('s-pl').value,e=document.getElementById('s-epg').value;act('set_schedule','playlist_interval='+p+'&epg_interval='+e)}
 function loadRaw(){var x=new XMLHttpRequest();x.open('GET','/playlist.m3u',true);x.onload=function(){document.getElementById('pl-r').value=x.responseText};x.send()}
-// Load channels from JS
+// Load channels
 (function(){
-    var s=document.createElement('script');
-    s.onload=function(){
-        try{renderRows(allCh)}catch(e){document.getElementById('ch-loading').innerHTML='Ошибка: '+e.message}
-    };
-    s.onerror=function(){document.getElementById('ch-loading').innerHTML='Ошибка загрузки каналов'};
-    s.src='/ch.js?t='+Date.now();
-    document.head.appendChild(s)
+    try{if(typeof allCh!=='undefined'&&allCh.length>0){renderRows(allCh)}else{document.getElementById('ch-loading').innerHTML='Нет данных'}}
+    catch(e){document.getElementById('ch-loading').innerHTML='JS: '+e.message}
 })();
 function editCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');document.getElementById('e-n').value=r.getAttribute('data-name');document.getElementById('e-u').value=r.getAttribute('data-url');document.getElementById('e-g').value=r.getAttribute('data-group');document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)}
 function closeModal(){document.getElementById('em').classList.remove('open')}
