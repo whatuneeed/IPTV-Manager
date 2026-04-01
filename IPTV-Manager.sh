@@ -200,29 +200,40 @@ if [ -n "\$ACTION" ]; then
     case "\$ACTION" in
         check_channel)
             URL=\$(echo "\$POST_DATA" | sed -n 's/.*url=\\([^&]*\\).*/\\1/p')
-            # Use wget with --timeout and --tries=1, check HTTP response code
-            # For HTTP/HTTPS streams, we check if server responds with 200/30x
-            # For UDP/RTP/RTSP streams, we just check if destination is reachable
             case "\$URL" in
                 http*|https*)
-                    HTTP_CODE=\$(wget --timeout=5 --tries=1 --max-redirect=0 -O /dev/null -S "\$URL" 2>&1 | grep "HTTP/" | tail -1 | awk '{print \$2}' | tr -d '\\r')
+                    # For IPTV streams (infinite TS/M3U8), wget never finishes downloading.
+                    # Strategy: wget in background, wait 4s, check if we got HTTP 200 headers.
+                    TMPF="/tmp/iptv-check-\$\$.txt"
+                    (wget --timeout=5 --tries=1 --max-redirect=3 -O /dev/null -S --header="User-Agent: VLC/3.0" "\$URL" 2>"\$TMPF" &)
+                    WGET_PID=\$!
+                    sleep 4
+                    if kill -0 \$WGET_PID 2>/dev/null; then
+                        kill \$WGET_PID 2>/dev/null
+                        wait \$WGET_PID 2>/dev/null
+                    fi
+                    HTTP_CODE=\$(grep "HTTP/" "\$TMPF" 2>/dev/null | tail -1 | awk '{print \$2}' | tr -d '\\r')
+                    rm -f "\$TMPF"
                     if [ -n "\$HTTP_CODE" ] && [ "\$HTTP_CODE" -ge 200 ] 2>/dev/null && [ "\$HTTP_CODE" -lt 500 ] 2>/dev/null; then
                         printf '{"status":"ok","online":true}'
                     else
                         printf '{"status":"ok","online":false}'
                     fi
                     ;;
-                udp*|rtp*|rtp://*)
-                    # For multicast/UDP, just try to connect briefly
+                udp*|rtp*)
                     printf '{"status":"ok","online":true}'
                     ;;
                 rtsp*|rtmp*)
-                    # For RTSP/RTMP, try a quick connection
-                    if timeout 5 wget -q --timeout=3 -O /dev/null "\$URL" 2>/dev/null; then
+                    TMPF="/tmp/iptv-check-\$\$.txt"
+                    (timeout 5 wget -q --timeout=3 -O /dev/null "\$URL" 2>"\$TMPF" &)
+                    sleep 4
+                    kill %1 2>/dev/null; wait %1 2>/dev/null
+                    if grep -qi "200\|connected\|playing" "\$TMPF" 2>/dev/null; then
                         printf '{"status":"ok","online":true}'
                     else
                         printf '{"status":"ok","online":false}'
                     fi
+                    rm -f "\$TMPF"
                     ;;
                 *)
                     printf '{"status":"ok","online":false}'
@@ -286,12 +297,23 @@ if [ -n "\$ACTION" ]; then
             ;;
         refresh_epg)
             . "\$EXC" 2>/dev/null
-            if [ -n "\$EPG_URL" ] && wget -q --timeout=30 -O "\$EF" "\$EPG_URL" 2>/dev/null && [ -s "\$EF" ]; then
-                SZ=\$(wc -c < "\$EF" 2>/dev/null)
-                mkdir -p /www/iptv; cp "\$EF" /www/iptv/epg.xml 2>/dev/null
-                NT=\$(date '+%%d.%%m.%%Y %%H:%%M')
-                printf '{"status":"ok","message":"EPG updated! Size: '"\$((SZ/1024))"' KB"}'
-            else printf '{"status":"error","message":"EPG download failed"}'; fi
+            if [ -n "\$EPG_URL" ]; then
+                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" -O "\$EF" "\$EPG_URL" 2>/dev/null && [ -s "\$EF" ]; then
+                    # Auto-detect and decompress gzip (by magic bytes, not just extension)
+                    MAGIC=\$(hexdump -n 2 -e '2/1 "%02x"' "\$EF" 2>/dev/null)
+                    if [ "\$MAGIC" = "1f8b" ]; then
+                        gunzip -f "\$EF" 2>/dev/null
+                        mv "\${EF%.gz}" "\$EF" 2>/dev/null
+                    fi
+                    # Also try if file has .gz extension
+                    case "\$EPG_URL" in
+                        *.gz) gunzip -f "\$EF" 2>/dev/null; mv "\${EF%.gz}" "\$EF" 2>/dev/null;;
+                    esac
+                    SZ=\$(wc -c < "\$EF" 2>/dev/null)
+                    mkdir -p /www/iptv; cp "\$EF" /www/iptv/epg.xml 2>/dev/null
+                    printf '{"status":"ok","message":"EPG updated! Size: '"\$((SZ/1024))"' KB"}'
+                else printf '{"status":"error","message":"EPG download failed"}'; fi
+            else printf '{"status":"error","message":"EPG URL not set"}'; fi
             ;;
         set_playlist_url)
             NU=\$(echo "\$POST_DATA" | sed -n 's/.*url=\\([^&]*\\).*/\\1/p')
@@ -308,7 +330,19 @@ if [ -n "\$ACTION" ]; then
             NU=\$(echo "\$POST_DATA" | sed -n 's/.*url=\\([^&]*\\).*/\\1/p')
             if [ -n "\$NU" ]; then
                 printf 'EPG_URL="%s"\\n' "\$NU" > "\$EXC"
-                if wget -q --timeout=30 -O "\$EF" "\$NU" 2>/dev/null && [ -s "\$EF" ]; then
+                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" -O "\$EF" "\$NU" 2>/dev/null && [ -s "\$EF" ]; then
+                    # Handle gzip files
+                    case "\$NU" in
+                        *.gz)
+                            if gunzip -f "\$EF" 2>/dev/null; then
+                                mv "\${EF%.gz}" "\$EF" 2>/dev/null || mv "\$EF.gz" "\$EF" 2>/dev/null
+                            fi
+                            ;;
+                    esac
+                    if gzip -t "\$EF" 2>/dev/null; then
+                        gunzip -f "\$EF" 2>/dev/null
+                        mv "\${EF%.gz}" "\$EF" 2>/dev/null || mv "\$EF.gz" "\$EF" 2>/dev/null
+                    fi
                     SZ=\$(wc -c < "\$EF" 2>/dev/null)
                     mkdir -p /www/iptv; cp "\$EF" /www/iptv/epg.xml 2>/dev/null
                     printf '{"status":"ok","message":"EPG loaded! Size: '"\$((SZ/1024))"' KB"}'
@@ -417,113 +451,113 @@ hr{border:none;border-top:1px solid #334155;margin:12px 0}
 <div class="c">
 <div class="h"><h1>IPTV Manager</h1><p>OpenWrt</p></div>
 <div class="st">
-<div class="s"><div class="sv">$ch</div><div class="sl">Channels</div></div>
-<div class="s"><div class="sv">$psz</div><div class="sl">Playlist</div></div>
+<div class="s"><div class="sv">$ch</div><div class="sl">Каналы</div></div>
+<div class="s"><div class="sv">$psz</div><div class="sl">Плейлист</div></div>
 <div class="s"><div class="sv">$esz</div><div class="sl">EPG</div></div>
 </div>
-<div class="ub"><code>http://$LAN_IP:8082/playlist.m3u</code><button onclick="cp(this)">Copy</button></div>
-<div class="ub"><code>http://$LAN_IP:8082/epg.xml</code><button onclick="cp(this)">Copy</button></div>
+<div class="ub"><code>http://$LAN_IP:8082/playlist.m3u</code><button onclick="cp(this)">Копировать</button></div>
+<div class="ub"><code>http://$LAN_IP:8082/epg.xml</code><button onclick="cp(this)">Копировать</button></div>
 <div class="tb">
-<button class="t a" onclick="st('status',this)">Status</button>
-<button class="t" onclick="st('playlist',this)">Playlist</button>
-<button class="t" onclick="st('epg',this)">EPG</button>
-<button class="t" onclick="st('settings',this)">Settings</button>
+<button class="t a" onclick="st('status',this)">Статус</button>
+<button class="t" onclick="st('playlist',this)">Плейлист</button>
+<button class="t" onclick="st('epg',this)">Телепрограмма</button>
+<button class="t" onclick="st('settings',this)">Настройки</button>
 </div>
 <div class="pn a" id="p-status">
-<h2>Channels</h2>
+<h2>Каналы</h2>
 <div class="filter-bar">
-<select id="f-group" onchange="filterCh()"><option value="">All groups</option>
+<select id="f-group" onchange="filterCh()"><option value="">Все группы</option>
 $group_opts
 </select>
-<input type="text" id="f-search" placeholder="Search..." oninput="filterCh()">
-<button class="b bp bsm" onclick="checkAll()">Check All</button>
+<input type="text" id="f-search" placeholder="Поиск..." oninput="filterCh()">
+<button class="b bp bsm" onclick="checkAll()">Проверить все</button>
 </div>
 <div style="overflow-x:auto">
 <table class="ch-table">
-<thead><tr><th style="width:20px"></th><th>Name</th><th>Group</th><th>Now Playing</th><th style="width:80px">Ping</th><th>Actions</th></tr></thead>
+<thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас</th><th style="width:80px">Пинг</th><th>Действия</th></tr></thead>
 <tbody id="ch-tbody">
 $channels
 </tbody></table></div>
 </div>
 <div class="pn" id="p-playlist">
-<h2>Playlist</h2>
-<div class="fg"><label>Playlist URL</label>
+<h2>Плейлист</h2>
+<div class="fg"><label>Ссылка на плейлист</label>
 <div style="display:flex;gap:6px">
 <input type="url" id="pl-url" placeholder="http://example.com/playlist.m3u" value="$purl">
-<button class="b bp bsm" onclick="setPlUrl()">Apply</button>
-<button class="b bs bsm" onclick="act('refresh_playlist','')">Refresh</button>
+<button class="b bp bsm" onclick="setPlUrl()">Применить</button>
+<button class="b bs bsm" onclick="act('refresh_playlist','')">Обновить</button>
 </div></div>
 <hr>
-<div class="fg"><label>Raw M3U</label>
+<div class="fg"><label>Исходный M3U</label>
 <textarea id="pl-raw" readonly style="min-height:200px"></textarea></div>
 </div>
 <div class="pn" id="p-epg">
-<h2>EPG TV Guide</h2>
-<div class="fg"><label>EPG URL</label>
+<h2>Телепрограмма (EPG)</h2>
+<div class="fg"><label>Ссылка на EPG (XMLTV)</label>
 <div style="display:flex;gap:6px">
 <input type="url" id="epg-url" placeholder="http://epg.example.com/epg.xml" value="$eurl">
-<button class="b bp bsm" onclick="setEpgUrl()">Apply</button>
-<button class="b bs bsm" onclick="act('refresh_epg','')">Refresh</button>
+<button class="b bp bsm" onclick="setEpgUrl()">Применить</button>
+<button class="b bs bsm" onclick="act('refresh_epg','')">Обновить</button>
 </div></div>
 <hr>
-<h3>Programs</h3>
+<h3>Передачи</h3>
 <div style="overflow-x:auto">
 <table class="epg-table">
-<thead><tr><th>Time</th><th>Channel</th><th>Program</th></tr></thead>
+<thead><tr><th>Время</th><th>Канал</th><th>Передача</th></tr></thead>
 <tbody>
 $epg_rows
 </tbody></table></div>
 </div>
 <div class="pn" id="p-settings">
-<h2>Settings</h2>
+<h2>Настройки</h2>
 <div class="sg">
-<div class="sc"><h3>Playlist Schedule</h3>
+<div class="sc"><h3>Расписание плейлиста</h3>
 <select id="s-pl">
-<option value="0"$([ "$pi" = "0" ] && echo " selected")>Off</option>
-<option value="1"$([ "$pi" = "1" ] && echo " selected")>Every hour</option>
-<option value="6"$([ "$pi" = "6" ] && echo " selected")>Every 6h</option>
-<option value="12"$([ "$pi" = "12" ] && echo " selected")>Every 12h</option>
-<option value="24"$([ "$pi" = "24" ] && echo " selected")>Every 24h</option>
+<option value="0"$([ "$pi" = "0" ] && echo " selected")>Выкл</option>
+<option value="1"$([ "$pi" = "1" ] && echo " selected")>Каждый час</option>
+<option value="6"$([ "$pi" = "6" ] && echo " selected")>Каждые 6ч</option>
+<option value="12"$([ "$pi" = "12" ] && echo " selected")>Каждые 12ч</option>
+<option value="24"$([ "$pi" = "24" ] && echo " selected")>Раз в сутки</option>
 </select>
-<div class="si">Last: <span>$plu</span></div></div>
-<div class="sc"><h3>EPG Schedule</h3>
+<div class="si">Последнее: <span>$plu</span></div></div>
+<div class="sc"><h3>Расписание EPG</h3>
 <select id="s-epg">
-<option value="0"$([ "$ei" = "0" ] && echo " selected")>Off</option>
-<option value="1"$([ "$ei" = "1" ] && echo " selected")>Every hour</option>
-<option value="6"$([ "$ei" = "6" ] && echo " selected")>Every 6h</option>
-<option value="12"$([ "$ei" = "12" ] && echo " selected")>Every 12h</option>
-<option value="24"$([ "$ei" = "24" ] && echo " selected")>Every 24h</option>
+<option value="0"$([ "$ei" = "0" ] && echo " selected")>Выкл</option>
+<option value="1"$([ "$ei" = "1" ] && echo " selected")>Каждый час</option>
+<option value="6"$([ "$ei" = "6" ] && echo " selected")>Каждые 6ч</option>
+<option value="12"$([ "$ei" = "12" ] && echo " selected")>Каждые 12ч</option>
+<option value="24"$([ "$ei" = "24" ] && echo " selected")>Раз в сутки</option>
 </select>
-<div class="si">Last: <span>$elu</span></div></div>
+<div class="si">Последнее: <span>$elu</span></div></div>
 </div>
-<div class="bg"><button class="b bp bsm" onclick="saveSched()">Save</button></div>
+<div class="bg"><button class="b bp bsm" onclick="saveSched()">Сохранить</button></div>
 </div>
 <div class="modal" id="edit-modal">
 <div class="modal-box">
-<h3>Edit Channel</h3>
-<div class="fg"><label>Name</label><input type="text" id="e-name" readonly></div>
-<div class="fg"><label>URL</label><input type="text" id="e-url"></div>
-<div class="fg"><label>Group</label><input type="text" id="e-group"></div>
+<h3>Редактировать канал</h3>
+<div class="fg"><label>Название</label><input type="text" id="e-name" readonly></div>
+<div class="fg"><label>Ссылка</label><input type="text" id="e-url"></div>
+<div class="fg"><label>Группа</label><input type="text" id="e-group"></div>
 <div class="bg">
-<button class="b bp bsm" onclick="saveEdit()">Save</button>
-<button class="b bd bsm" onclick="closeModal()">Cancel</button>
+<button class="b bp bsm" onclick="saveEdit()">Сохранить</button>
+<button class="b bd bsm" onclick="closeModal()">Отмена</button>
 </div></div></div>
 <div class="ft">IPTV Manager v2.0 — OpenWrt</div>
 </div>
 <script>
 var API='/cgi-bin/admin.cgi';
 function st(t,e){document.querySelectorAll('.t').forEach(function(x){x.classList.remove('a')});document.querySelectorAll('.pn').forEach(function(x){x.classList.remove('a')});document.getElementById('p-'+t).classList.add('a');e.classList.add('a');if(t==='playlist')loadRaw()}
-function cp(b){var c=b.previousElementSibling;var r=document.createRange();r.selectNodeContents(c);var s=window.getSelection();s.removeAllRanges();s.addRange(r);document.execCommand('copy');s.removeAllRanges();b.textContent='OK';setTimeout(function(){b.textContent='Copy'},1500)}
+function cp(b){var c=b.previousElementSibling;var r=document.createRange();r.selectNodeContents(c);var s=window.getSelection();s.removeAllRanges();s.addRange(r);document.execCommand('copy');s.removeAllRanges();b.textContent='OK';setTimeout(function(){b.textContent='Копировать'},1500)}
 function toast(m,t){var d=document.createElement('div');d.className='toast '+(t==='ok'?'to':'te');d.textContent=m;document.body.appendChild(d);setTimeout(function(){d.remove()},4000)}
-function act(a,p){var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast(r.message,'ok');setTimeout(function(){location.reload()},1500)}else toast(r.message,'err')}catch(e){toast('Error','err')}};x.onerror=function(){toast('Network error','err')};x.send('action='+a+'&'+p)}
+function act(a,p){var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast(r.message,'ok');setTimeout(function(){location.reload()},1500)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.onerror=function(){toast('Ошибка сети','err')};x.send('action='+a+'&'+p)}
 function checkCh(idx,url){var el=document.getElementById('st-'+idx);el.className='ch-status unknown';var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);el.className=r.online?'ch-status online':'ch-status offline'}catch(e){el.className='ch-status offline'}};x.send('action=check_channel&url='+encodeURIComponent(url))}
 function checkAll(){document.querySelectorAll('#ch-tbody tr').forEach(function(row){var idx=row.getAttribute('data-idx');var url=row.getAttribute('data-url');if(url)checkCh(idx,url)})}
 function filterCh(){var g=document.getElementById('f-group').value;var s=document.getElementById('f-search').value.toLowerCase();document.querySelectorAll('#ch-tbody tr').forEach(function(row){var rg=row.getAttribute('data-group');var rn=row.getAttribute('data-name').toLowerCase();row.style.display=(!g||rg===g)&&(!s||rn.indexOf(s)>=0)?'':'none'})}
 function editCh(idx){var row=document.querySelector('#ch-tbody tr[data-idx="'+idx+'"]');document.getElementById('e-name').value=row.getAttribute('data-name');document.getElementById('e-url').value=row.getAttribute('data-url');document.getElementById('e-group').value=row.getAttribute('data-group');document.getElementById('edit-modal').classList.add('open');document.getElementById('edit-modal').setAttribute('data-idx',idx)}
 function closeModal(){document.getElementById('edit-modal').classList.remove('open')}
-function saveEdit(){var idx=document.getElementById('edit-modal').getAttribute('data-idx');var url=document.getElementById('e-url').value;var group=document.getElementById('e-group').value;var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Saved','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Error','err')}};x.send('action=update_channel&idx='+idx+'&new_url='+encodeURIComponent(url)+'&new_group='+encodeURIComponent(group))}
-function setPlUrl(){var u=document.getElementById('pl-url').value;if(!u){toast('URL required','err');return}act('set_playlist_url','url='+encodeURIComponent(u))}
-function setEpgUrl(){var u=document.getElementById('epg-url').value;if(!u){toast('URL required','err');return}act('set_epg_url','url='+encodeURIComponent(u))}
+function saveEdit(){var idx=document.getElementById('edit-modal').getAttribute('data-idx');var url=document.getElementById('e-url').value;var group=document.getElementById('e-group').value;var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.send('action=update_channel&idx='+idx+'&new_url='+encodeURIComponent(url)+'&new_group='+encodeURIComponent(group))}
+function setPlUrl(){var u=document.getElementById('pl-url').value;if(!u){toast('Введите ссылку','err');return}act('set_playlist_url','url='+encodeURIComponent(u))}
+function setEpgUrl(){var u=document.getElementById('epg-url').value;if(!u){toast('Введите ссылку','err');return}act('set_epg_url','url='+encodeURIComponent(u))}
 function saveSched(){var pi=document.getElementById('s-pl').value;var ei=document.getElementById('s-epg').value;act('set_schedule','playlist_interval='+pi+'&epg_interval='+ei)}
 function loadRaw(){var x=new XMLHttpRequest();x.open('GET','/playlist.m3u',true);x.onload=function(){document.getElementById('pl-raw').value=x.responseText};x.send()}
 </script>
