@@ -330,6 +330,8 @@ if [ -n "\$ACTION" ]; then
             ;;
         set_playlist_url)
             NU=\$(echo "\$POST_DATA" | sed -n 's/.*url=\\([^&]*\\).*/\\1/p')
+            # URL-decode
+            NU=\$(echo "\$NU" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
             if [ -n "\$NU" ]; then
                 printf 'PLAYLIST_TYPE="url"\\nPLAYLIST_URL="%s"\\nPLAYLIST_SOURCE=""\\n' "\$NU" > "\$EC"
                 if wget -q --timeout=15 -O "\$PL" "\$NU" 2>/dev/null && [ -s "\$PL" ]; then
@@ -347,6 +349,8 @@ if [ -n "\$ACTION" ]; then
             ;;
         set_epg_url)
             NU=\$(echo "\$POST_DATA" | sed -n 's/.*url=\\([^&]*\\).*/\\1/p')
+            # URL-decode: %XX -> character, + -> space
+            NU=\$(echo "\$NU" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
             if [ -n "\$NU" ]; then
                 printf 'EPG_URL="%s"\\n' "\$NU" > "\$EXC"
                 WGET_CMD="wget -q --timeout=30 --header=\\"User-Agent: VLC/3.0\\""
@@ -899,7 +903,13 @@ show_menu() {
     load_config
     echo -e "${CYAN}Плейлист:${NC} $([ "$PLAYLIST_TYPE" = "url" ] && echo "$PLAYLIST_URL" || echo "$PLAYLIST_TYPE")"
     load_epg
-    echo -e "${CYAN}EPG:${NC} $([ -n "$EPG_URL" ] && echo "$EPG_URL" || echo "не настроен")"
+    local display_epg=""
+    if [ -n "$EPG_URL" ]; then
+        display_epg=$(echo "$EPG_URL" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
+    else
+        display_epg="не настроен"
+    fi
+    echo -e "${CYAN}EPG:${NC} $display_epg"
     echo -e "${CYAN}Расписание:${NC} Плейлист=$(int_text $PLAYLIST_INTERVAL) | EPG=$(int_text $EPG_INTERVAL)"
     [ -n "$PLAYLIST_LAST_UPDATE" ] && echo -e "${CYAN}Обновлён:${NC} $PLAYLIST_LAST_UPDATE"
     echo ""
@@ -909,27 +919,38 @@ show_menu() {
         echo_error "Сервер: остановлен"
     fi
     echo ""
-    echo -e "${CYAN}1) ${GREEN}Загрузить по ссылке${NC}"
-    echo -e "${CYAN}2) ${GREEN}Загрузить из файла${NC}"
-    echo -e "${CYAN}3) ${GREEN}Настроить провайдера${NC}"
-    echo -e "${CYAN}4) ${GREEN}Обновить плейлист${NC}"
-    echo -e "${CYAN}5) ${GREEN}Настроить EPG${NC}"
-    echo -e "${CYAN}6) ${GREEN}Обновить EPG${NC}"
-    echo -e "${CYAN}7) ${GREEN}Удалить EPG${NC}"
-    echo -e "${CYAN}8) ${GREEN}Расписание${NC}"
-    echo -e "${CYAN}9) ${GREEN}Запустить сервер${NC}"
-    echo -e "${CYAN}10) ${GREEN}Остановить сервер${NC}"
+    echo -e "${YELLOW}── Плейлист ──────────────────────────${NC}"
+    echo -e "${CYAN} 1) ${GREEN}Загрузить по ссылке${NC}"
+    echo -e "${CYAN} 2) ${GREEN}Загрузить из файла${NC}"
+    echo -e "${CYAN} 3) ${GREEN}Настроить провайдера${NC}"
+    echo -e "${CYAN} 4) ${GREEN}Обновить плейлист${NC}"
+    echo ""
+    echo -e "${YELLOW}── Телепрограмма ─────────────────────${NC}"
+    echo -e "${CYAN} 5) ${GREEN}Настроить EPG${NC}"
+    echo -e "${CYAN} 6) ${GREEN}Обновить EPG${NC}"
+    echo -e "${CYAN} 7) ${GREEN}Удалить EPG${NC}"
+    echo ""
+    echo -e "${YELLOW}── Сервер ────────────────────────────${NC}"
+    echo -e "${CYAN} 8) ${GREEN}Запустить${NC}"
+    echo -e "${CYAN} 9) ${GREEN}Остановить${NC}"
+    echo ""
+    echo -e "${YELLOW}── Настройки ─────────────────────────${NC}"
+    echo -e "${CYAN}10) ${GREEN}Расписание обновлений${NC}"
     echo -e "${CYAN}11) ${GREEN}Автозапуск${NC}"
+    echo ""
+    echo -e "${YELLOW}── Удаление ──────────────────────────${NC}"
     echo -e "${CYAN}12) ${GREEN}Удалить плейлист${NC}"
-    echo -e "${CYAN}13) ${RED}Удалить IPTV Manager${NC}"
+    echo -e "${RED} 13) ${RED}Удалить IPTV Manager${NC}"
+    echo ""
     echo -e "${CYAN}Enter) ${GREEN}Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"; read c </dev/tty
     case "$c" in
         1) load_playlist_url;; 2) load_playlist_file;; 3) setup_provider;;
         4) do_update_playlist;; 5) setup_epg;; 6) do_update_epg;; 7) remove_epg;;
-        8) setup_schedule;; 9) start_http_server;; 10) stop_http_server;;
-        11) setup_autostart;; 12) remove_playlist;; 13) uninstall;; *) echo_info "Выход"; exit 0;;
+        8) start_http_server;; 9) stop_http_server;;
+        10) setup_schedule;; 11) setup_autostart;;
+        12) remove_playlist;; 13) uninstall;; *) echo_info "Выход"; exit 0;;
     esac
     PAUSE
 }
