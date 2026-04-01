@@ -77,7 +77,7 @@ generate_cgi() {
     # Генерация JSON каналов через awk
     mkdir -p /www/iptv
     if [ -f "$PLAYLIST_FILE" ]; then
-        awk 'BEGIN{printf "[";f=1;i=0}/#EXTINF:/{n=$0;nm="";g="";l="";t="";if(match(n/,/)){nm=substr(n,RSTART+1);gsub(/^[ \t]+/,"",nm);gsub(/[ \t]+$/,"",nm)};if(match(n,/group-title="[^"]*"/)){g=substr(n,RSTART+13,RLENGTH-14)};if(match(n,/tvg-id="[^"]*"/)){t=substr(n,RSTART+9,RLENGTH-10)};if(match(n,/tvg-logo="[^"]*"/)){l=substr(n,RSTART+11,RLENGTH-12)};if(nm=="")nm="Неизвестный";if(g=="")g="Общее";next}/^http/||/^https/||/^rtsp/||/^rtmp/||/^udp/||/^rtp/{u=$0;gsub(/\\/,"\\\\",nm);gsub(/"/,"\\\"",nm);gsub(/\\/,"\\\\",g);gsub(/"/,"\\\"",g);gsub(/\\/,"\\\\",l);gsub(/"/,"\\\"",l);gsub(/\\/,"\\\\",t);gsub(/"/,"\\\"",t);gsub(/\\/,"\\\\",u);gsub(/"/,"\\\"",u);if(!f)printf ",";f=0;printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\"}",nm,g,l,t,u;i++;if(i>=5000)exit}END{printf "]"}' "$PLAYLIST_FILE" > /www/iptv/channels.json 2>/dev/null
+        awk 'BEGIN{printf "[";f=1}/#EXTINF:/{nm="";g="";l="";t="";i=index($0,",");if(i>0){nm=substr($0,i+1);sub(/^[ \t]+/,"",nm)};if(nm=="")nm="Неизвестный";p=index($0,"group-title=\"");if(p>0){s=substr($0,p+13);e=index(s,"\"");g=substr(s,1,e-1)};if(g=="")g="Общее";p=index($0,"tvg-logo=\"");if(p>0){s=substr($0,p+10);e=index(s,"\"");l=substr(s,1,e-1)};p=index($0,"tvg-id=\"");if(p>0){s=substr($0,p+8);e=index(s,"\"");t=substr(s,1,e-1)};next}/^http/{if(!f)printf ",";f=0;gsub(/"/,"\\\"",$0);gsub(/"/,"\\\"",nm);gsub(/"/,"\\\"",g);gsub(/"/,"\\\"",l);gsub(/"/,"\\\"",t);printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\"}",nm,g,l,t,$0}END{printf "]"}' "$PLAYLIST_FILE" > /www/iptv/channels.json 2>/dev/null
     else
         echo "[]" > /www/iptv/channels.json
     fi
