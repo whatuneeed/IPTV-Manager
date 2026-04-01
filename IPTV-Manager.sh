@@ -169,7 +169,7 @@ BEGIN {
     prog="—"
     if(tvgid!="" && tvgid in epg) prog=epg[tvgid]
     gsub(/&/, "\\&amp;", prog); gsub(/</, "\\&lt;", prog); gsub(/>/, "\\&gt;", prog); gsub(/"/, "\\&quot;", prog)
-    printf "<tr data-group=\"%s\" data-name=\"%s\" data-idx=\"%d\" data-url=\"%s\"><td><span class=\"ch-st unknown\" id=\"st-%d\"></span></td><td class=\"ch-n\">%s%s</td><td class=\"ch-g\">%s</td><td class=\"ch-p\">%s</td><td><button class=\"b bsm bp\" onclick=\"checkCh(%d,'%s')\">Пинг</button></td><td><button class=\"b bsm bs\" onclick=\"watchCh(%d,'%s')\">▶</button></td><td><button class=\"b bsm bo\" onclick=\"editCh(%d)\">Изм.</button></td></tr>\n", grp, name, idx, url, idx, li, name, grp, prog, idx, url, idx, url, idx
+    printf "<tr data-group=\"%s\" data-name=\"%s\" data-idx=\"%d\" data-url=\"%s\"><td><span class=\"ch-st unknown\" id=\"st-%d\"></span></td><td class=\"ch-n\">%s%s</td><td class=\"ch-g\">%s</td><td class=\"ch-p\">%s</td><td><button class=\"b bsm bp\" onclick=\"checkCh(%d,'%s')\">Пинг</button></td><td><button class=\"b bsm bs\" onclick=\"watchCh(%d)\">▶</button></td><td><button class=\"b bsm bo\" onclick=\"editCh(%d)\">Изм.</button></td></tr>\n", grp, name, idx, url, idx, li, name, grp, prog, idx, url, idx, idx
     idx++
     if(idx>=1500) exit
 }
@@ -414,8 +414,8 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/epg.xml</code><button onclick="cp(this)">Копировать</button></div>
 <div class="tb"><button class="t a" onclick="st('status',this)">Каналы</button><button class="t" onclick="st('playlist',this)">Плейлист</button><button class="t" onclick="st('epg',this)">Телепрограмма</button><button class="t" onclick="st('settings',this)">Настройки</button></div>
 <div class="pn a" id="p-status"><h2>Список каналов</h2>
-<div style="margin-bottom:12px">'"$(cat /www/iptv/stats.html 2>/dev/null)"'</div>
 <div class="fb"><select id="f-g" onchange="filterCh()"><option value="">Все группы</option>$GOPTS</select><input type="text" id="f-s" placeholder="Поиск..." oninput="filterCh()"><button class="b bp bsm" onclick="checkAll()">Проверить все</button></div>
+<div style="margin-bottom:12px">'"$(cat /www/iptv/stats.html 2>/dev/null)"'</div>
 <div style="overflow-x:auto"><table class="ch-t"><thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:70px">Пинг</th><th style="width:40px"></th><th>Действия</th></tr></thead><tbody id="ch-tb">'"$CHROWS"'</tbody></table></div>
 <div id="pager" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
 </div>
@@ -472,7 +472,7 @@ function goPage(n){var pages=Math.ceil(allRows.length/PS);if(n<0||n>=pages)retur
 function filterCh(){var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();allRows=[];var vis=0;document.querySelectorAll('#ch-tb tr').forEach(function(r){var rg=r.getAttribute('data-group'),rn=r.getAttribute('data-name').toLowerCase();var show=(!g||rg===g)&&(!s||rn.indexOf(s)>=0);r.style.display=show?'':'none';allRows.push(r);if(show)vis++});CP=0;renderPager()}
 function editCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');document.getElementById('e-n').value=r.getAttribute('data-name');document.getElementById('e-u').value=r.getAttribute('data-url');document.getElementById('e-g').value=r.getAttribute('data-group');document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)}
 function closeModal(){document.getElementById('em').classList.remove('open')}
-function watchCh(i,u){window.open('/player.html?url='+encodeURIComponent(u),'_blank')}
+function watchCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');if(!r)return;var u=r.getAttribute('data-url');window.open('/player.html?url='+encodeURIComponent(u),'_blank')}
 function saveEdit(){var i=document.getElementById('em').getAttribute('data-idx'),u=document.getElementById('e-u').value,g=document.getElementById('e-g').value,x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.send('action=update_channel&idx='+i+'&new_url='+encodeURIComponent(u)+'&new_group='+encodeURIComponent(g))}
 function setPlUrl(){var u=document.getElementById('pl-u').value;if(!u){toast('Введите ссылку','err');return}act('set_playlist_url','url='+encodeURIComponent(u))}
 function setEpgUrl(){var u=document.getElementById('epg-u').value;if(!u){toast('Введите ссылку','err');return}act('set_epg_url','url='+encodeURIComponent(u))}
