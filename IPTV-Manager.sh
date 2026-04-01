@@ -88,7 +88,7 @@ generate_cgi() {
     if [ -f "$PLAYLIST_FILE" ]; then
         # Generate channels.json via awk (reliable for any size)
         mkdir -p /www/iptv
-        awk '
+        awk 'BEGIN{printf "["}
             /#EXTINF:/ {
                 name=""; group=""; tvgid=""; logo=""
                 n=$0
@@ -107,10 +107,11 @@ generate_cgi() {
                 gsub(/\\/,"\\\\",url); gsub(/"/,"\\\"",url)
                 gsub(/\\/,"\\\\",logo); gsub(/"/,"\\\"",logo)
                 gsub(/\\/,"\\\\",tvgid); gsub(/"/,"\\\"",tvgid)
-                if(NR>1) printf ","
+                if(idx>0) printf ","
                 printf "{\"i\":%d,\"n\":\"%s\",\"g\":\"%s\",\"u\":\"%s\",\"t\":\"%s\",\"l\":\"%s\"}", idx++, name, group, url, tvgid, logo
                 if(idx>=5000) exit
             }
+            END{printf "]"}
         ' "$PLAYLIST_FILE" > /www/iptv/channels.json 2>/dev/null
 
         echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done > /tmp/iptv-go.txt
