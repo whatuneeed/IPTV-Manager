@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IPTV Player</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f172a;--panel:#1e293b;--border:#334155;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--accent:#3b82f6;--accent2:#2563eb;--hover:#334155;--active:#1e3a5f;--green:#22c55e;--red:#ef4444}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100vh;overflow:hidden}
+#app{display:flex;height:100vh}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#topbar{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--panel);border-bottom:1px solid var(--border)}
+#topbar .now{font-size:13px;font-weight:600;color:var(--text2);margin-right:8px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#topbar input{flex:1;padding:7px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;min-width:120px}
+#topbar input:focus{outline:none;border-color:var(--accent)}
+#topbar button{padding:7px 14px;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap;transition:background .15s}
+.btn-play{background:var(--accent);color:#fff}.btn-play:hover{background:var(--accent2)}
+.btn-icon{background:var(--hover);color:var(--text2);padding:7px 10px;font-size:16px}.btn-icon:hover{background:var(--border);color:var(--text)}
+#video-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative;min-height:0;overflow:hidden}
+video{max-width:100%;max-height:100%;background:#000;display:block}
+#epg-overlay{position:absolute;bottom:0;left:0;right:0;background:rgba(15,23,42,.92);padding:12px 16px;max-height:120px;overflow-y:auto;backdrop-filter:blur(8px);display:none}
+#epg-overlay.show{display:block}
+#epg-overlay .epg-now{font-size:13px;color:var(--green);font-weight:600;margin-bottom:4px}
+#epg-overlay .epg-next{font-size:12px;color:var(--text3)}
+#error{display:none;position:absolute;text-align:center;padding:40px}
+#error h2{margin-bottom:8px;color:var(--red)}
+#error p{color:var(--text3);font-size:14px}
+#sidebar{width:340px;background:var(--panel);border-left:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+#sb-head{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+#sb-head h3{font-size:14px;font-weight:600}
+#sb-head .cnt{font-size:12px;color:var(--text3)}
+#sb-tabs{display:flex;gap:4px;padding:6px 12px;border-bottom:1px solid var(--border)}
+#sb-tabs button{flex:1;padding:5px;background:var(--hover);border:none;border-radius:5px;color:var(--text3);cursor:pointer;font-size:11px;font-weight:600;transition:all .15s}
+#sb-tabs button.on{background:var(--accent);color:#fff}
+#sb-search{padding:6px 12px;border-bottom:1px solid var(--border)}
+#sb-search input{width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px}
+#sb-search input:focus{outline:none;border-color:var(--accent)}
+#sb-group{padding:4px 12px 6px;border-bottom:1px solid var(--border)}
+#sb-group select{width:100%;padding:5px 8px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px}
+#sb-pl{padding:8px 12px;border-bottom:1px solid var(--border);display:none}
+#sb-pl input{width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;margin-bottom:6px}
+#sb-pl button{width:100%;padding:6px;background:var(--green);border:none;border-radius:5px;color:#fff;font-weight:600;cursor:pointer;font-size:12px}
+#ch-list{flex:1;overflow-y:auto}
+.ch{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;border-bottom:1px solid rgba(51,65,85,.4);transition:background .12s}
+.ch:hover{background:var(--hover)}
+.ch.on{background:var(--active);border-left:3px solid var(--accent)}
+.ch-logo{width:32px;height:32px;border-radius:5px;overflow:hidden;flex-shrink:0;background:var(--bg);display:flex;align-items:center;justify-content:center}
+.ch-logo img{width:100%;height:100%;object-fit:contain}
+.ch-logo .ph{font-size:16px}
+.ch-info{flex:1;min-width:0}
+.ch-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-meta{font-size:11px;color:var(--text3);margin-top:1px}
+.ch-now{font-size:11px;color:var(--green);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#loading{padding:30px;text-align:center;color:var(--text3)}
+#empty{padding:30px;text-align:center;color:var(--text3);font-size:13px}
+#toggle-sb{display:none;padding:6px 10px;background:var(--hover);border:none;border-radius:5px;color:var(--text);cursor:pointer;font-size:16px}
+@media(max-width:800px){
+    #sidebar{position:fixed;right:-340px;top:0;bottom:0;z-index:100;transition:right .25s}
+    #sidebar.open{right:0}
+    #toggle-sb{display:block}
+}
+</style>
+</head>
+<body>
+<div id="app">
+<div id="main">
+<div id="topbar">
+<button id="toggle-sb" onclick="toggleSb()">☰</button>
+<span class="now" id="now-ch"></span>
+<input type="text" id="url-in" placeholder="Поток или URL плейлиста...">
+<button class="btn-play" onclick="handleUrl()">▶</button>
+<button class="btn-icon" onclick="toggleFs()" title="Полный экран">⛶</button>
+</div>
+<div id="video-wrap">
+<video id="vid" controls autoplay playsinline></video>
+<div id="epg-overlay">
+<div class="epg-now" id="epg-now"></div>
+<div class="epg-next" id="epg-next"></div>
+</div>
+<div id="error">
+<h2 id="err-title">Ошибка</h2>
+<p id="err-text"></p>
+</div>
+</div>
+</div>
+<div id="sidebar">
+<div id="sb-head">
+<h3>📺 Каналы</h3>
+<span class="cnt" id="ch-cnt"></span>
+</div>
+<div id="sb-tabs">
+<button class="on" onclick="tab('ch',this)">Каналы</button>
+<button onclick="tab('pl',this)">Плейлист</button>
+</div>
+<div id="sb-search">
+<input type="text" id="sb-q" placeholder="Поиск..." oninput="filter()">
+</div>
+<div id="sb-group">
+<select id="sb-g" onchange="filter()"><option value="">Все группы</option></select>
+</div>
+<div id="sb-pl">
+<input type="text" id="pl-url" placeholder="URL M3U/M3U8 плейлиста...">
+<button onclick="loadPl()">Загрузить плейлист</button>
+</div>
+<div id="ch-list"><div id="loading">Загрузка...</div></div>
+</div>
+</div>
+<script>
+var vid=document.getElementById('vid');
+var urlIn=document.getElementById('url-in');
+var nowCh=document.getElementById('now-ch');
+var errDiv=document.getElementById('error');
+var errText=document.getElementById('err-text');
+var epgOv=document.getElementById('epg-overlay');
+var epgNow=document.getElementById('epg-now');
+var epgNext=document.getElementById('epg-next');
+var chList=document.getElementById('ch-list');
+var hls=null,channels=[],filtered=[],curIdx=-1,epgData={},curMode='ch';
+
+function play(url,idx){
+    if(!url)return;
+    urlIn.value=url;
+    errDiv.style.display='none';
+    epgOv.classList.remove('show');
+    if(hls){hls.destroy();hls=null}
+    if(Hls.isSupported()){
+        hls=new Hls({enableWorker:true,lowLatencyMode:true,maxBufferLength:30,maxMaxBufferLength:60});
+        hls.loadSource(url);
+        hls.attachMedia(vid);
+        hls.on(Hls.Events.MANIFEST_PARSED,function(){vid.play().catch(function(){})});
+        hls.on(Hls.Events.ERROR,function(e,d){
+            if(d.fatal){
+                if(d.type===Hls.ErrorTypes.NETWORK_ERROR){
+                    errText.textContent='Ошибка сети. Поток недоступен.';
+                }else if(d.type===Hls.ErrorTypes.MEDIA_ERROR){
+                    hls.recoverMediaError();return;
+                }else{
+                    errText.textContent='Неподдерживаемый формат.';
+                }
+                errDiv.style.display='block';
+            }
+        });
+    }else if(vid.canPlayType('application/vnd.apple.mpegurl')){
+        vid.src=url;
+        vid.addEventListener('loadedmetadata',function(){vid.play().catch(function(){})});
+    }else{
+        errText.textContent='Браузер не поддерживает HLS.';
+        errDiv.style.display='block';
+    }
+    if(idx!==undefined&&idx!==null){
+        curIdx=idx;
+        var ch=channels[idx];
+        if(ch){
+            nowCh.textContent=ch.n;
+            showEpg(ch.i);
+        }
+        document.querySelectorAll('.ch').forEach(function(el,i){
+            el.classList.toggle('on',i===fIdx(idx));
+        });
+    }
+}
+
+function handleUrl(){
+    var u=urlIn.value.trim();
+    if(!u)return;
+    if(u.indexOf('.m3u')>=0||u.indexOf('playlist')>=0){
+        loadPlUrl(u);
+    }else{
+        play(u);
+    }
+}
+
+function fIdx(ri){
+    for(var i=0;i<filtered.length;i++){if(filtered[i]._r===ri)return i}
+    return -1;
+}
+
+function render(){
+    if(!filtered.length){chList.innerHTML='<div id="empty">Нет каналов</div>';return}
+    var h='';
+    for(var i=0;i<filtered.length;i++){
+        var ch=filtered[i];
+        var lh=ch.l?'<img src="'+esc(ch.l)+'" onerror="this.parentElement.innerHTML=\'📺\'">':'<span class="ph">📺</span>';
+        var now=ch.i&&epgData[ch.i]?'<div class="ch-now">📡 '+esc(epgData[ch.i])+'</div>':'';
+        h+='<div class="ch'+(ch._r===curIdx?' on':'')+'" onclick="play(\''+esc(ch.u).replace(/'/g,"\\'")+'\','+ch._r+')">';
+        h+='<div class="ch-logo">'+lh+'</div>';
+        h+='<div class="ch-info"><div class="ch-name">'+esc(ch.n)+'</div>';
+        h+='<div class="ch-meta">'+esc(ch.g)+'</div>'+now+'</div></div>';
+    }
+    chList.innerHTML=h;
+}
+
+function filter(){
+    var q=document.getElementById('sb-q').value.toLowerCase();
+    var g=document.getElementById('sb-g').value;
+    filtered=[];
+    for(var i=0;i<channels.length;i++){
+        var ch=channels[i];
+        if((!g||ch.g===g)&&(!q||ch.n.toLowerCase().indexOf(q)>=0)){
+            ch._r=i;filtered.push(ch);
+        }
+    }
+    document.getElementById('ch-cnt').textContent=filtered.length+'/'+channels.length;
+    render();
+}
+
+function esc(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+function toggleSb(){document.getElementById('sidebar').classList.toggle('open')}
+
+function tab(m,btn){
+    curMode=m;
+    document.querySelectorAll('#sb-tabs button').forEach(function(b){b.classList.remove('on')});
+    btn.classList.add('on');
+    document.getElementById('sb-search').style.display=m==='ch'?'':'none';
+    document.getElementById('sb-group').style.display=m==='ch'?'':'none';
+    document.getElementById('sb-pl').style.display=m==='pl'?'':'none';
+    if(m==='ch')filter();
+}
+
+function parseM3U(text){
+    var lines=text.split('\n');
+    var r=[],name='',group='',logo='',tvgid='';
+    for(var i=0;i<lines.length;i++){
+        var l=lines[i].replace(/^\s+|\s+$/g,'');
+        if(l.indexOf('#EXTINF:')===0){
+            name='';group='';logo='';tvgid='';
+            var ci=l.indexOf(',');
+            if(ci>=0)name=l.substring(ci+1).replace(/^\s+/,'');
+            var m;
+            m=l.match(/group-title="([^"]*)"/);if(m)group=m[1];
+            m=l.match(/tvg-logo="([^"]*)"/);if(m)logo=m[1];
+            m=l.match(/tvg-id="([^"]*)"/);if(m)tvgid=m[1];
+            if(!name)name='Неизвестный';
+            if(!group)group='Общее';
+        }else if(/^(https?|rtsp|rtmp|udp|rtp):/i.test(l)){
+            r.push({n:name,g:group,l:logo,i:tvgid,u:l});
+            name='';group='';logo='';tvgid='';
+        }
+    }
+    return r;
+}
+
+function loadPlUrl(url){
+    chList.innerHTML='<div id="loading">Загрузка плейлиста...</div>';
+    var x=new XMLHttpRequest();
+    x.open('GET',url,true);
+    x.onload=function(){
+        try{
+            channels=parseM3U(x.responseText);
+            fillGroups();filter();
+            document.getElementById('pl-url').value=url;
+            tab('ch',document.querySelectorAll('#sb-tabs button')[0]);
+        }catch(e){chList.innerHTML='<div id="empty">Ошибка парсинга</div>'}
+    };
+    x.onerror=function(){chList.innerHTML='<div id="empty">Не удалось загрузить</div>'};
+    x.send();
+}
+
+function loadPl(){
+    var u=document.getElementById('pl-url').value.trim();
+    if(!u){alert('Введите URL');return}
+    loadPlUrl(u);
+}
+
+function fillGroups(){
+    var g={};
+    for(var i=0;i<channels.length;i++){if(channels[i].g&&!g[channels[i].g])g[channels[i].g]=true}
+    var s=document.getElementById('sb-g');
+    s.innerHTML='<option value="">Все группы</option>';
+    var k=Object.keys(g).sort();
+    for(var j=0;j<k.length;j++){var o=document.createElement('option');o.value=k[j];o.textContent=k[j];s.appendChild(o)}
+}
+
+function loadChannels(){
+    var x=new XMLHttpRequest();
+    x.open('GET',window.location.origin+'/channels.json',true);
+    x.onload=function(){
+        try{
+            channels=JSON.parse(x.responseText);
+            fillGroups();filter();
+        }catch(e){chList.innerHTML='<div id="empty">Ошибка загрузки</div>'}
+    };
+    x.onerror=function(){chList.innerHTML='<div id="empty">Ошибка загрузки</div>'};
+    x.send();
+}
+
+function loadEpg(){
+    var x=new XMLHttpRequest();
+    x.open('GET',window.location.origin+'/epg.xml',true);
+    x.onload=function(){
+        try{
+            var xml=x.responseXML;
+            if(!xml)return;
+            var now=new Date();
+            var ns=now.getFullYear()+p2(now.getMonth()+1)+p2(now.getDate())+p2(now.getHours())+p2(now.getMinutes())+p2(now.getSeconds());
+            var progs=xml.getElementsByTagName('programme');
+            for(var i=0;i<progs.length;i++){
+                var p=progs[i];
+                var st=p.getAttribute('start'),sp=p.getAttribute('stop'),ch=p.getAttribute('channel');
+                var te=p.getElementsByTagName('title')[0];
+                var ti=te?te.textContent:'';
+                if(st&&sp&&st<=ns&&sp>=ns&&ch&&ti)epgData[ch]=ti;
+            }
+            render();
+        }catch(e){}
+    };
+    x.send();
+}
+
+function p2(n){return n<10?'0'+n:''+n}
+
+function showEpg(id){
+    if(!id||!epgData[id]){epgOv.classList.remove('show');return}
+    epgNow.textContent='📡 '+epgData[id];
+    epgOv.classList.add('show');
+    setTimeout(function(){epgOv.classList.remove('show')},5000);
+}
+
+function toggleFs(){
+    if(document.fullscreenElement)document.exitFullscreen();
+    else document.documentElement.requestFullscreen().catch(function(){});
+}
+
+var params=new URLSearchParams(window.location.search);
+var sUrl=params.get('url'),sIdx=params.get('idx'),pUrl=params.get('pl');
+if(pUrl){loadPlUrl(pUrl)}
+else if(sUrl){play(sUrl,sIdx!==null?parseInt(sIdx):-1);loadChannels()}
+else{loadChannels()}
+loadEpg();
+
+document.addEventListener('keydown',function(e){
+    if(e.target.tagName==='INPUT')return;
+    if(e.key==='ArrowUp'||e.key==='ArrowDown'){
+        e.preventDefault();
+        var d=e.key==='ArrowDown'?1:-1,ni=curIdx+d;
+        if(ni>=0&&ni<channels.length){
+            play(channels[ni].u,ni);
+            var fi=fIdx(ni);
+            if(fi>=0){var items=document.querySelectorAll('.ch');if(items[fi])items[fi].scrollIntoView({block:'nearest'})}
+        }
+    }
+    if(e.key===' '){e.preventDefault();vid.paused?vid.play():vid.pause()}
+    if(e.key==='f'||e.key==='F'||e.key==='а'||e.key==='А')toggleFs();
+});
+
+urlIn.addEventListener('keydown',function(e){if(e.key==='Enter')handleUrl()});
+</script>
+</body>
+</html>
