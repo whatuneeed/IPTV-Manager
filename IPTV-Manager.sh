@@ -544,6 +544,7 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <select id="f-g" onchange="filterCh()"><option value="">Все группы</option>$group_opts</select>
 <input type="text" id="f-s" placeholder="Поиск..." oninput="filterCh()">
 <button class="b bp bsm" onclick="checkAll()">Проверить все</button>
+<button class="b bs bsm" onclick="watchAll()">▶ Смотреть всё</button>
 </div>
 <div style="overflow-x:auto">
 <table class="ch-t">
@@ -715,7 +716,11 @@ function checkAll(){
 function watchCh(idx){
     var ch=channels[idx];
     if(!ch)return;
-    window.open('/player.html?url='+encodeURIComponent(ch.u),'_blank');
+    window.open('/player.html?url='+encodeURIComponent(ch.u)+'&idx='+idx,'_blank');
+}
+
+function watchAll(){
+    window.open('/player.html','_blank');
 }
 
 function editCh(idx){

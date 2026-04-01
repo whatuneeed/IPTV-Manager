@@ -7,86 +7,239 @@
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff}
-#player-wrap{width:100%;max-width:1200px;padding:16px}
-video{width:100%;background:#000;border-radius:8px;max-height:90vh}
-#error{display:none;text-align:center;padding:40px}
+body{background:#0f172a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100vh;overflow:hidden}
+#app{display:flex;height:100vh}
+#main{flex:1;display:flex;flex-direction:column;min-width:0}
+#top-bar{display:flex;align-items:center;gap:8px;padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155}
+#top-bar input{flex:1;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+#top-bar button{padding:8px 16px;background:#3b82f6;border:none;border-radius:6px;color:#fff;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap}
+#top-bar button:hover{background:#2563eb}
+#top-bar .ch-name{font-size:14px;font-weight:600;color:#94a3b8;margin-right:8px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#video-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative}
+video{width:100%;height:100%;background:#000}
+#error{display:none;position:absolute;text-align:center;padding:40px}
 #error h2{margin-bottom:12px;color:#ef4444}
 #error p{color:#94a3b8;font-size:14px}
-#url-bar{display:flex;gap:8px;margin-bottom:16px}
-#url-bar input{flex:1;padding:10px 14px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#fff;font-size:14px}
-#url-bar button{padding:10px 20px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer}
-#info{position:fixed;top:12px;right:12px;background:rgba(0,0,0,.7);padding:8px 14px;border-radius:8px;font-size:12px;color:#94a3b8}
+#sidebar{width:320px;background:#1e293b;border-left:1px solid #334155;display:flex;flex-direction:column;overflow:hidden}
+#sidebar-header{padding:12px 16px;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between}
+#sidebar-header h3{font-size:14px;color:#e2e8f0}
+#sidebar-header .count{font-size:12px;color:#64748b}
+#search-box{padding:8px 12px;border-bottom:1px solid #334155}
+#search-box input{width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
+#search-box input:focus{outline:none;border-color:#3b82f6}
+#group-filter{padding:4px 12px 8px;border-bottom:1px solid #334155}
+#group-filter select{width:100%;padding:6px 10px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px}
+#ch-list{flex:1;overflow-y:auto}
+.ch-item{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(51,65,85,.5);transition:background .15s}
+.ch-item:hover{background:#334155}
+.ch-item.active{background:#1e3a5f;border-left:3px solid #3b82f6}
+.ch-logo{width:28px;height:28px;border-radius:4px;overflow:hidden;flex-shrink:0;background:#0f172a;display:flex;align-items:center;justify-content:center}
+.ch-logo img{width:100%;height:100%;object-fit:contain}
+.ch-logo .ph{font-size:14px}
+.ch-info{flex:1;min-width:0}
+.ch-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-group{font-size:11px;color:#64748b}
+#loading{padding:40px;text-align:center;color:#64748b}
+#no-channels{padding:40px;text-align:center;color:#64748b;font-size:14px}
+@media(max-width:768px){
+    #sidebar{position:fixed;right:-320px;top:0;bottom:0;z-index:100;transition:right .3s}
+    #sidebar.open{right:0}
+    #toggle-sidebar{display:block!important}
+}
+#toggle-sidebar{display:none;padding:8px 12px;background:#334155;border:none;border-radius:6px;color:#e2e8f0;cursor:pointer;font-size:16px}
+#close-sidebar{display:none;padding:4px 8px;background:transparent;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer;font-size:12px}
 </style>
 </head>
 <body>
-<div id="player-wrap">
-<div id="url-bar">
-<input type="text" id="url-input" placeholder="Вставьте ссылку на поток (m3u8, ts, mp4...)">
-<button onclick="playUrl()">Play</button>
+<div id="app">
+<div id="main">
+<div id="top-bar">
+<button id="toggle-sidebar" onclick="toggleSidebar()">☰</button>
+<span class="ch-name" id="current-ch"></span>
+<input type="text" id="url-input" placeholder="Ссылка на поток...">
+<button onclick="playInput()">▶</button>
 </div>
+<div id="video-wrap">
 <video id="video" controls autoplay></video>
 <div id="error">
 <h2>Ошибка воспроизведения</h2>
 <p id="error-text"></p>
 </div>
 </div>
-<div id="info">IPTV Player</div>
+</div>
+<div id="sidebar">
+<div id="sidebar-header">
+<h3>Каналы</h3>
+<span class="count" id="ch-count"></span>
+<button id="close-sidebar" onclick="toggleSidebar()">✕</button>
+</div>
+<div id="search-box">
+<input type="text" id="search" placeholder="Поиск каналов..." oninput="filterChannels()">
+</div>
+<div id="group-filter">
+<select id="group-sel" onchange="filterChannels()"><option value="">Все группы</option></select>
+</div>
+<div id="ch-list">
+<div id="loading">Загрузка каналов...</div>
+</div>
+</div>
+</div>
 <script>
 var video=document.getElementById('video');
 var urlInput=document.getElementById('url-input');
 var errorDiv=document.getElementById('error');
 var errorText=document.getElementById('error-text');
+var currentChEl=document.getElementById('current-ch');
 var hls=null;
+var channels=[];
+var filtered=[];
+var currentIdx=-1;
 
-function playUrl(url){
-    if(!url){url=urlInput.value.trim()}
-    if(!url){return}
+function playUrl(url,idx){
+    if(!url)return;
     urlInput.value=url;
     errorDiv.style.display='none';
     if(hls){hls.destroy();hls=null}
     if(Hls.isSupported()){
-        hls=new Hls({enableWorker:true,lowLatencyMode:true});
+        hls=new Hls({enableWorker:true,lowLatencyMode:true,maxBufferLength:30});
         hls.loadSource(url);
         hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED,function(){video.play()});
+        hls.on(Hls.Events.MANIFEST_PARSED,function(){video.play().catch(function(){})});
         hls.on(Hls.Events.ERROR,function(e,data){
             if(data.fatal){
                 switch(data.type){
                     case Hls.ErrorTypes.NETWORK_ERROR:
-                        errorText.textContent='Ошибка сети. Проверьте доступность потока.';
-                        break;
+                        errorText.textContent='Ошибка сети. Проверьте доступность потока.';break;
                     case Hls.ErrorTypes.MEDIA_ERROR:
-                        hls.recoverMediaError();
-                        return;
+                        hls.recoverMediaError();return;
                     default:
-                        errorText.textContent='Неподдерживаемый формат потока.';
-                        break;
+                        errorText.textContent='Неподдерживаемый формат потока.';break;
                 }
                 errorDiv.style.display='block';
             }
         });
     }else if(video.canPlayType('application/vnd.apple.mpegurl')){
         video.src=url;
-        video.addEventListener('loadedmetadata',function(){video.play()});
+        video.addEventListener('loadedmetadata',function(){video.play().catch(function(){})});
     }else{
-        errorText.textContent='Ваш браузер не поддерживает HLS. Попробуйте открыть ссылку в VLC.';
+        errorText.textContent='Браузер не поддерживает HLS.';
         errorDiv.style.display='block';
     }
+    if(idx!==undefined&&idx!==null){
+        currentIdx=idx;
+        var ch=channels[idx];
+        if(ch)currentChEl.textContent=ch.n;
+        document.querySelectorAll('.ch-item').forEach(function(el,i){
+            el.classList.toggle('active',i===getFilteredIdx(idx));
+        });
+    }
+}
+
+function playInput(){playUrl(urlInput.value.trim())}
+
+function getFilteredIdx(realIdx){
+    for(var i=0;i<filtered.length;i++){if(filtered[i]._r===realIdx)return i}
+    return -1;
+}
+
+function renderChannels(){
+    var list=document.getElementById('ch-list');
+    if(!filtered.length){
+        list.innerHTML='<div id="no-channels">Нет каналов</div>';
+        return;
+    }
+    var html='';
+    for(var i=0;i<filtered.length;i++){
+        var ch=filtered[i];
+        var logoHtml=ch.l?'<img src="'+esc(ch.l)+'" onerror="this.parentElement.innerHTML=\'📺\'">':'<span class="ph">📺</span>';
+        html+='<div class="ch-item'+(ch._r===currentIdx?' active':'')+'" onclick="playUrl(\''+esc(ch.u).replace(/'/g,"\\'")+'\','+ch._r+')">';
+        html+='<div class="ch-logo">'+logoHtml+'</div>';
+        html+='<div class="ch-info"><div class="ch-name">'+esc(ch.n)+'</div>';
+        html+='<div class="ch-group">'+esc(ch.g)+'</div></div></div>';
+    }
+    list.innerHTML=html;
+}
+
+function filterChannels(){
+    var q=document.getElementById('search').value.toLowerCase();
+    var g=document.getElementById('group-sel').value;
+    filtered=[];
+    for(var i=0;i<channels.length;i++){
+        var ch=channels[i];
+        if((!g||ch.g===g)&&(!q||ch.n.toLowerCase().indexOf(q)>=0)){
+            ch._r=i;
+            filtered.push(ch);
+        }
+    }
+    document.getElementById('ch-count').textContent=filtered.length+' / '+channels.length;
+    renderChannels();
+}
+
+function esc(s){
+    if(!s)return'';
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function toggleSidebar(){
+    document.getElementById('sidebar').classList.toggle('open');
+}
+
+function loadChannels(){
+    var x=new XMLHttpRequest();
+    x.open('GET','/channels.json',true);
+    x.onload=function(){
+        try{
+            channels=JSON.parse(x.responseText);
+            var groups={};
+            for(var i=0;i<channels.length;i++){
+                var g=channels[i].g;
+                if(g&&!groups[g])groups[g]=true;
+            }
+            var sel=document.getElementById('group-sel');
+            var keys=Object.keys(groups).sort();
+            for(var j=0;j<keys.length;j++){
+                var opt=document.createElement('option');
+                opt.value=keys[j];opt.textContent=keys[j];
+                sel.appendChild(opt);
+            }
+            filterChannels();
+        }catch(e){
+            document.getElementById('ch-list').innerHTML='<div id="no-channels">Ошибка загрузки каналов</div>';
+        }
+    };
+    x.onerror=function(){
+        document.getElementById('ch-list').innerHTML='<div id="no-channels">Ошибка загрузки каналов</div>';
+    };
+    x.send();
 }
 
 var params=new URLSearchParams(window.location.search);
 var streamUrl=params.get('url');
+var startIdx=params.get('idx');
 if(streamUrl){
-    playUrl(streamUrl);
-}else{
-    var hash=window.location.hash.substring(1);
-    if(hash){playUrl(decodeURIComponent(hash))}
+    playUrl(streamUrl,startIdx!==null?parseInt(startIdx):-1);
 }
+loadChannels();
 
-document.getElementById('url-input').addEventListener('keydown',function(e){
-    if(e.key==='Enter'){playUrl()}
+document.addEventListener('keydown',function(e){
+    if(e.target.tagName==='INPUT')return;
+    if(e.key==='ArrowUp'||e.key==='ArrowDown'){
+        e.preventDefault();
+        var dir=e.key==='ArrowDown'?1:-1;
+        var ni=currentIdx+dir;
+        if(ni>=0&&ni<channels.length){
+            playUrl(channels[ni].u,ni);
+            var fi=getFilteredIdx(ni);
+            if(fi>=0){
+                var items=document.querySelectorAll('.ch-item');
+                if(items[fi])items[fi].scrollIntoView({block:'nearest'});
+            }
+        }
+    }
+    if(e.key===' '){e.preventDefault();video.paused?video.play():video.pause()}
 });
+
+urlInput.addEventListener('keydown',function(e){if(e.key==='Enter'){playInput()}});
 </script>
 </body>
 </html>
