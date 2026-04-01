@@ -89,6 +89,17 @@ generate_cgi() {
         # Generate channels HTML with now-playing from EPG
         mkdir -p /www/iptv
 
+        # Generate JS array of channel URLs
+        awk '
+            /#EXTINF:/ { idx++ }
+            /^http/ || /^https/ || /^rtsp/ || /^rtmp/ || /^udp/ || /^rtp/ {
+                url=$0
+                gsub(/\\/, "\\\\", url); gsub(/"/, "\\\"", url); gsub(/'/, "\\'", url)
+                printf "CH_URL[%d]=\"%s\";\n", idx-1, url
+                if(idx>=1500) exit
+            }
+        ' "$PLAYLIST_FILE" > /www/iptv/ch_urls.js 2>/dev/null
+
         # Generate player page
         cat > /www/iptv/player.html << 'PLEOF'
 <!DOCTYPE html>
@@ -169,7 +180,7 @@ BEGIN {
     prog="—"
     if(tvgid!="" && tvgid in epg) prog=epg[tvgid]
     gsub(/&/, "\\&amp;", prog); gsub(/</, "\\&lt;", prog); gsub(/>/, "\\&gt;", prog); gsub(/"/, "\\&quot;", prog)
-    printf "<tr data-group=\"%s\" data-name=\"%s\" data-idx=\"%d\" data-url=\"%s\"><td><span class=\"ch-st unknown\" id=\"st-%d\"></span></td><td class=\"ch-n\">%s%s</td><td class=\"ch-g\">%s</td><td class=\"ch-p\">%s</td><td><button class=\"b bsm bp\" onclick=\"checkCh(%d,'%s')\">Пинг</button></td><td><button class=\"b bsm bs\" onclick=\"watchCh(%d)\">▶</button></td><td><button class=\"b bsm bo\" onclick=\"editCh(%d)\">Изм.</button></td></tr>\n", grp, name, idx, url, idx, li, name, grp, prog, idx, url, idx, idx
+    printf "<tr data-group=\"%s\" data-name=\"%s\" data-idx=\"%d\"><td><span class=\"ch-st unknown\" id=\"st-%d\"></span></td><td class=\"ch-n\">%s%s</td><td class=\"ch-g\">%s</td><td class=\"ch-p\">%s</td><td><button class=\"b bsm bp\" onclick=\"checkCh(%d,CH_URL[%d])\">Пинг</button></td><td><button class=\"b bsm bs\" onclick=\"watchCh(%d)\">▶</button></td><td><button class=\"b bsm bo\" onclick=\"editCh(%d)\">Изм.</button></td></tr>\n", grp, name, idx, idx, li, name, grp, prog, idx, idx, idx, idx
     idx++
     if(idx>=1500) exit
 }
@@ -443,6 +454,7 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="bg"><button class="b bp bsm" onclick="saveEdit()">Сохранить</button><button class="b bd bsm" onclick="closeModal()">Отмена</button></div></div></div>
 <div class="ft">IPTV Manager v3.2 — OpenWrt</div>
 </div>
+<script src="/ch_urls.js"></script>
 <script>
 var API='/cgi-bin/admin.cgi';
 function toggleTheme(){var d=document.documentElement,t=d.getAttribute('data-theme')==='dark'?'light':'dark';d.setAttribute('data-theme',t);document.getElementById('ttb').innerHTML=t==='dark'?'☀️ Тема':'🌙 Тема';try{localStorage.setItem('iptv-theme',t)}catch(e){}}
@@ -472,7 +484,7 @@ function goPage(n){var pages=Math.ceil(allRows.length/PS);if(n<0||n>=pages)retur
 function filterCh(){var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();allRows=[];var vis=0;document.querySelectorAll('#ch-tb tr').forEach(function(r){var rg=r.getAttribute('data-group'),rn=r.getAttribute('data-name').toLowerCase();var show=(!g||rg===g)&&(!s||rn.indexOf(s)>=0);r.style.display=show?'':'none';allRows.push(r);if(show)vis++});CP=0;renderPager()}
 function editCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');document.getElementById('e-n').value=r.getAttribute('data-name');document.getElementById('e-u').value=r.getAttribute('data-url');document.getElementById('e-g').value=r.getAttribute('data-group');document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)}
 function closeModal(){document.getElementById('em').classList.remove('open')}
-function watchCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');if(!r)return;var u=r.getAttribute('data-url');window.open('/player.html?url='+encodeURIComponent(u),'_blank')}
+function watchCh(i){var u=CH_URL[i];if(!u)return;window.open('https://livepush.io/hlsplayer/index.html#'+encodeURIComponent(u),'_blank')}
 function saveEdit(){var i=document.getElementById('em').getAttribute('data-idx'),u=document.getElementById('e-u').value,g=document.getElementById('e-g').value,x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.send('action=update_channel&idx='+i+'&new_url='+encodeURIComponent(u)+'&new_group='+encodeURIComponent(g))}
 function setPlUrl(){var u=document.getElementById('pl-u').value;if(!u){toast('Введите ссылку','err');return}act('set_playlist_url','url='+encodeURIComponent(u))}
 function setEpgUrl(){var u=document.getElementById('epg-u').value;if(!u){toast('Введите ссылку','err');return}act('set_epg_url','url='+encodeURIComponent(u))}
