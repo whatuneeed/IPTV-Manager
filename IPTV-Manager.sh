@@ -714,7 +714,7 @@ function checkAll(){
 function watchCh(idx){
     var ch=channels[idx];
     if(!ch)return;
-    window.open('https://livepush.io/hlsplayer/index.html#'+encodeURIComponent(ch.u),'_blank');
+    window.open('/player.html?url='+encodeURIComponent(ch.u),'_blank');
 }
 
 function editCh(idx){
@@ -928,6 +928,95 @@ loadChannels();
 HTMLEND
 CGIEOF
     chmod +x /www/iptv/cgi-bin/admin.cgi
+    generate_player
+}
+
+generate_player() {
+    cat > /www/iptv/player.html << 'PLAYEREOF'
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IPTV Player</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff}
+#player-wrap{width:100%;max-width:1200px;padding:16px}
+video{width:100%;background:#000;border-radius:8px;max-height:90vh}
+#error{display:none;text-align:center;padding:40px}
+#error h2{margin-bottom:12px;color:#ef4444}
+#error p{color:#94a3b8;font-size:14px}
+#url-bar{display:flex;gap:8px;margin-bottom:16px}
+#url-bar input{flex:1;padding:10px 14px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#fff;font-size:14px}
+#url-bar button{padding:10px 20px;background:#3b82f6;border:none;border-radius:8px;color:#fff;font-weight:600;cursor:pointer}
+#info{position:fixed;top:12px;right:12px;background:rgba(0,0,0,.7);padding:8px 14px;border-radius:8px;font-size:12px;color:#94a3b8}
+</style>
+</head>
+<body>
+<div id="player-wrap">
+<div id="url-bar">
+<input type="text" id="url-input" placeholder="Вставьте ссылку на поток (m3u8, ts, mp4...)">
+<button onclick="playUrl()">Play</button>
+</div>
+<video id="video" controls autoplay></video>
+<div id="error">
+<h2>Ошибка воспроизведения</h2>
+<p id="error-text"></p>
+</div>
+</div>
+<div id="info">IPTV Player</div>
+<script>
+var video=document.getElementById('video');
+var urlInput=document.getElementById('url-input');
+var errorDiv=document.getElementById('error');
+var errorText=document.getElementById('error-text');
+var hls=null;
+function playUrl(url){
+    if(!url){url=urlInput.value.trim()}
+    if(!url){return}
+    urlInput.value=url;
+    errorDiv.style.display='none';
+    if(hls){hls.destroy();hls=null}
+    if(Hls.isSupported()){
+        hls=new Hls({enableWorker:true,lowLatencyMode:true});
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED,function(){video.play()});
+        hls.on(Hls.Events.ERROR,function(e,data){
+            if(data.fatal){
+                switch(data.type){
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        errorText.textContent='Ошибка сети. Проверьте доступность потока.';
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        hls.recoverMediaError();
+                        return;
+                    default:
+                        errorText.textContent='Неподдерживаемый формат потока.';
+                        break;
+                }
+                errorDiv.style.display='block';
+            }
+        });
+    }else if(video.canPlayType('application/vnd.apple.mpegurl')){
+        video.src=url;
+        video.addEventListener('loadedmetadata',function(){video.play()});
+    }else{
+        errorText.textContent='Ваш браузер не поддерживает HLS. Попробуйте открыть ссылку в VLC.';
+        errorDiv.style.display='block';
+    }
+}
+var params=new URLSearchParams(window.location.search);
+var streamUrl=params.get('url');
+if(streamUrl){playUrl(streamUrl)}
+else{var hash=window.location.hash.substring(1);if(hash){playUrl(decodeURIComponent(hash))}}
+document.getElementById('url-input').addEventListener('keydown',function(e){if(e.key==='Enter'){playUrl()}});
+</script>
+</body>
+</html>
+PLAYEREOF
 }
 
 # ==========================================
