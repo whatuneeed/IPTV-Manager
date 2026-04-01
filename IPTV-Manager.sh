@@ -84,35 +84,8 @@ generate_cgi() {
         ' "$EPG_FILE" > "$now_epg" 2>/dev/null
     fi
 
-    local channels="" group_opts=""
+    local group_opts=""
     if [ -f "$PLAYLIST_FILE" ]; then
-        # Generate channels JS + embed in HTML
-        mkdir -p /www/iptv
-        awk '
-            /#EXTINF:/ {
-                name=""; group=""; tvgid=""; logo=""
-                n=$0
-                if(match(n,/,/)) name=substr(n,RSTART+1)
-                gsub(/^[ \t]+|[ \t]+$/,"",name)
-                if(match(n,/group-title="[^"]*"/)) { group=substr(n,RSTART+12,RLENGTH-13) }
-                if(match(n,/tvg-id="[^"]*"/)) { tvgid=substr(n,RSTART+9,RLENGTH-10) }
-                if(match(n,/tvg-logo="[^"]*"/)) { logo=substr(n,RSTART+11,RLENGTH-12) }
-                if(name=="") name="Unknown"
-                if(group=="") group="General"
-            }
-            /^http|^https|^rtsp|^rtmp|^udp|^rtp/ {
-                url=$0
-                gsub(/\\/, "\\\\", name); gsub(/"/, "\\\"", name)
-                gsub(/\\/, "\\\\", group); gsub(/"/, "\\\"", group)
-                gsub(/\\/, "\\\\", url); gsub(/"/, "\\\"", url)
-                gsub(/\\/, "\\\\", logo); gsub(/"/, "\\\"", logo)
-                gsub(/\\/, "\\\\", tvgid); gsub(/"/, "\\\"", tvgid)
-                if(idx>0) printf ","
-                printf "{i:%d,n:\"%s\",g:\"%s\",u:\"%s\",t:\"%s\",l:\"%s\"}", idx++, name, group, url, tvgid, logo
-                if(idx>=5000) exit
-            }
-        ' "$PLAYLIST_FILE" > /www/iptv/ch_data.js 2>/dev/null
-
         echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done > /tmp/iptv-go.txt
         group_opts=$(cat /tmp/iptv-go.txt 2>/dev/null)
         rm -f /tmp/iptv-go.txt
@@ -223,6 +196,31 @@ if [ -n "$ACTION" ]; then
 fi
 
 hdr
+CHROWS=$(awk '
+    /#EXTINF:/ {
+        name=""; group=""; tvgid=""; logo=""
+        n=$0
+        if(match(n,/,/)) name=substr(n,RSTART+1)
+        gsub(/^[ \t]+|[ \t]+$/,"",name)
+        if(match(n,/group-title="[^"]*"/)) { group=substr(n,RSTART+12,RLENGTH-13) }
+        if(match(n,/tvg-id="[^"]*"/)) { tvgid=substr(n,RSTART+9,RLENGTH-10) }
+        if(match(n,/tvg-logo="[^"]*"/)) { logo=substr(n,RSTART+11,RLENGTH-12) }
+        if(name=="") name="Unknown"
+        if(group=="") group="General"
+    }
+    /^http/ || /^https/ || /^rtsp/ || /^rtmp/ || /^udp/ || /^rtp/ {
+        url=$0
+        gsub(/&/, "\\&amp;", name); gsub(/</, "\\&lt;", name); gsub(/>/, "\\&gt;", name)
+        gsub(/&/, "\\&amp;", group); gsub(/</, "\\&lt;", group); gsub(/>/, "\\&gt;", group)
+        gsub(/&/, "\\&amp;", url); gsub(/</, "\\&lt;", url); gsub(/>/, "\\&gt;", url)
+        gsub(/&/, "\\&amp;", logo); gsub(/</, "\\&lt;", logo); gsub(/>/, "\\&gt;", logo)
+        li=""
+        if(logo!="") li="<img src=\""logo"\" style=\"width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px\" onerror=\"this.style.display=\\047none\\047\">"
+        printf "<tr data-group=\"%s\" data-name=\"%s\" data-idx=\"%d\" data-url=\"%s\"><td><span class=\"ch-st unknown\" id=\"st-%d\"></span></td><td class=\"ch-n\">%s%s</td><td class=\"ch-g\">%s</td><td class=\"ch-p\">—</td><td><button class=\"b bsm bp\" onclick=\"checkCh(%d,\\047%s\\047)\">Пинг</button></td><td><button class=\"b bsm bo\" onclick=\"editCh(%d)\">Изм.</button></td></tr>\n", group, name, idx, url, idx, li, name, group, idx, url, idx
+        idx++
+        if(idx>=1500) exit
+    }
+' "$PL" 2>/dev/null)
 load_config; load_epg; load_sched
 CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null || echo 0)
 PSZ=$(file_size "$PL"); ESZ=$(file_size "$EF")
@@ -336,9 +334,8 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="tb"><button class="t a" onclick="st('status',this)">Каналы</button><button class="t" onclick="st('playlist',this)">Плейлист</button><button class="t" onclick="st('epg',this)">Телепрограмма</button><button class="t" onclick="st('settings',this)">Настройки</button></div>
 <div class="pn a" id="p-status"><h2>Список каналов</h2>
 <div class="fb"><select id="f-g" onchange="filterCh()"><option value="">Все группы</option>$GOPTS</select><input type="text" id="f-s" placeholder="Поиск..." oninput="filterCh()"><button class="b bp bsm" onclick="checkAll()">Проверить все</button></div>
-<div id="ch-loading" style="text-align:center;padding:40px;color:var(--text3)">Загрузка каналов...</div>
-<div style="overflow-x:auto;display:none" id="ch-wrap"><table class="ch-t"><thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:80px">Пинг</th><th>Действия</th></tr></thead><tbody id="ch-tb"></tbody></table></div>
-<div id="pager" style="display:none;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
+<div style="overflow-x:auto"><table class="ch-t"><thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:80px">Пинг</th><th>Действия</th></tr></thead><tbody id="ch-tb">$CHROWS</tbody></table></div>
+<div id="pager" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
 </div>
 <div class="pn" id="p-playlist"><h2>Плейлист</h2>
 <div class="fg"><label>Ссылка на плейлист</label><input type="url" id="pl-u" placeholder="http://example.com/playlist.m3u" value="$PURL"><div class="hint">Вставьте ссылку на M3U/M3U8 плейлист</div></div>
@@ -359,7 +356,6 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="bg"><button class="b bp bsm" onclick="saveEdit()">Сохранить</button><button class="b bd bsm" onclick="closeModal()">Отмена</button></div></div></div>
 <div class="ft">IPTV Manager v3.2 — OpenWrt</div>
 </div>
-<script src="/ch_data.js"></script>
 <script>
 var API='/cgi-bin/admin.cgi';
 function toggleTheme(){var d=document.documentElement,t=d.getAttribute('data-theme')==='dark'?'light':'dark';d.setAttribute('data-theme',t);document.getElementById('ttb').innerHTML=t==='dark'?'☀️ Тема':'🌙 Тема';try{localStorage.setItem('iptv-theme',t)}catch(e){}}
@@ -369,26 +365,11 @@ function cp(b){var c=b.previousElementSibling,r=document.createRange();r.selectN
 function toast(m,t){var d=document.createElement('div');d.className='toast '+(t==='ok'?'to':'te');d.textContent=m;document.body.appendChild(d);setTimeout(function(){d.remove()},4000)}
 function act(a,p){var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast(r.message,'ok');setTimeout(function(){location.reload()},1500)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.onerror=function(){toast('Ошибка сети','err')};x.send('action='+a+'&'+p)}
 function checkCh(i,u){var el=document.getElementById('st-'+i);el.className='ch-st unknown';var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);el.className=r.online?'ch-st online':'ch-st offline'}catch(e){el.className='ch-st offline'}};x.send('action=check_channel&url='+encodeURIComponent(u))}
-function checkAll(){var vis=getVisible();vis.forEach(function(r){var i=r.getAttribute('data-idx'),u=r.getAttribute('data-url');if(u)checkCh(i,u)})}
-var PS=150,CP=0,allRows=[],allCh=[];
-function esc(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function renderRows(chs){
-    var tb=document.getElementById('ch-tb'),h='';
-    chs.forEach(function(c){
-        var li=c.l?'<img src="'+esc(c.l)+'" style="width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px" onerror="this.style.display=\'none\'">':'';
-        var ue=esc(c.u).replace(/'/g,"&#39;");
-        h+='<tr data-group="'+esc(c.g)+'" data-name="'+esc(c.n)+'" data-idx="'+c.i+'" data-url="'+ue+'"><td><span class="ch-st unknown" id="st-'+c.i+'"></span></td><td class="ch-n">'+li+esc(c.n)+'</td><td class="ch-g">'+esc(c.g)+'</td><td class="ch-p">—</td><td><button class="b bsm bp" onclick="checkCh('+c.i+',\''+ue+'\')">Пинг</button></td><td><button class="b bsm bo" onclick="editCh('+c.i+')">Изм.</button></td></tr>'
-    });
-    tb.innerHTML=h;
-    allRows=[];tb.querySelectorAll('tr').forEach(function(r){allRows.push(r)});
-    document.getElementById('ch-loading').style.display='none';
-    document.getElementById('ch-wrap').style.display='block';
-    document.getElementById('pager').style.display='flex';
-    goPage(0)
-}
-function getVisible(){var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();return allRows.filter(function(r){var rg=r.getAttribute('data-group'),rn=r.getAttribute('data-name').toLowerCase();return(!g||rg===g)&&(!s||rn.indexOf(s)>=0)})}
+function checkAll(){document.querySelectorAll('#ch-tb tr').forEach(function(r){var i=r.getAttribute('data-idx'),u=r.getAttribute('data-url');if(u)checkCh(i,u)})}
+var PS=150,CP=0,allRows=[];
 function renderPager(){
-    var vis=getVisible(),total=vis.length,pages=Math.ceil(total/PS);
+    allRows=[];document.querySelectorAll('#ch-tb tr').forEach(function(x){allRows.push(x)});
+    var total=allRows.length,pages=Math.ceil(total/PS);
     var pg=document.getElementById('pager');
     if(pages<=1){pg.innerHTML='<span class="pg-info">'+total+' каналов</span>';return}
     var h='<button class="pg" onclick="goPage(CP-1)"'+(CP===0?' disabled':'')+'>‹</button>';
@@ -400,30 +381,16 @@ function renderPager(){
     h+='<span class="pg-info">'+(CP*PS+1)+'–'+Math.min((CP+1)*PS,total)+' из '+total+'</span>';
     pg.innerHTML=h
 }
-function goPage(n){
-    var vis=getVisible(),pages=Math.ceil(vis.length/PS);
-    if(n<0||n>=pages)return;CP=n;
-    allRows.forEach(function(r){r.style.display='none'});
-    vis.forEach(function(r,i){if(i>=CP*PS&&i<(CP+1)*PS)r.style.display=''})
-    renderPager()
-}
-function filterCh(){CP=0;goPage(0)}
-function editCh(i){
-    var c=allCh.find(function(x){return x.i===i});if(!c)return;
-    document.getElementById('e-n').value=c.n;document.getElementById('e-u').value=c.u;document.getElementById('e-g').value=c.g;
-    document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)
-}
+function goPage(n){var pages=Math.ceil(allRows.length/PS);if(n<0||n>=pages)return;CP=n;allRows.forEach(function(r,i){r.style.display=(i>=CP*PS&&i<(CP+1)*PS)?'':'none'});renderPager()}
+function filterCh(){var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();allRows=[];var vis=0;document.querySelectorAll('#ch-tb tr').forEach(function(r){var rg=r.getAttribute('data-group'),rn=r.getAttribute('data-name').toLowerCase();var show=(!g||rg===g)&&(!s||rn.indexOf(s)>=0);r.style.display=show?'':'none';allRows.push(r);if(show)vis++});CP=0;renderPager()}
+function editCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');document.getElementById('e-n').value=r.getAttribute('data-name');document.getElementById('e-u').value=r.getAttribute('data-url');document.getElementById('e-g').value=r.getAttribute('data-group');document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)}
 function closeModal(){document.getElementById('em').classList.remove('open')}
 function saveEdit(){var i=document.getElementById('em').getAttribute('data-idx'),u=document.getElementById('e-u').value,g=document.getElementById('e-g').value,x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.send('action=update_channel&idx='+i+'&new_url='+encodeURIComponent(u)+'&new_group='+encodeURIComponent(g))}
 function setPlUrl(){var u=document.getElementById('pl-u').value;if(!u){toast('Введите ссылку','err');return}act('set_playlist_url','url='+encodeURIComponent(u))}
 function setEpgUrl(){var u=document.getElementById('epg-u').value;if(!u){toast('Введите ссылку','err');return}act('set_epg_url','url='+encodeURIComponent(u))}
 function saveSched(){var p=document.getElementById('s-pl').value,e=document.getElementById('s-epg').value;act('set_schedule','playlist_interval='+p+'&epg_interval='+e)}
 function loadRaw(){var x=new XMLHttpRequest();x.open('GET','/playlist.m3u',true);x.onload=function(){document.getElementById('pl-r').value=x.responseText};x.send()}
-// Load channels
-(function(){
-    try{if(typeof allCh!=='undefined'&&allCh.length>0){renderRows(allCh)}else{document.getElementById('ch-loading').innerHTML='Нет данных'}}
-    catch(e){document.getElementById('ch-loading').innerHTML='JS: '+e.message}
-})();
+(function(){goPage(0)})();
 function editCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');document.getElementById('e-n').value=r.getAttribute('data-name');document.getElementById('e-u').value=r.getAttribute('data-url');document.getElementById('e-g').value=r.getAttribute('data-group');document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)}
 function closeModal(){document.getElementById('em').classList.remove('open')}
 function saveEdit(){var i=document.getElementById('em').getAttribute('data-idx'),u=document.getElementById('e-u').value,g=document.getElementById('e-g').value,x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.send('action=update_channel&idx='+i+'&new_url='+encodeURIComponent(u)+'&new_group='+encodeURIComponent(g))}
