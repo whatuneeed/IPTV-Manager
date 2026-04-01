@@ -104,38 +104,80 @@ generate_cgi() {
         groups=$(grep -o 'group-title="[^"]*"' "$PLAYLIST_FILE" | sed 's/group-title="//;s/"//' | sort -u)
     fi
 
-    # Каналы (первые 100)
+    # EPG сейчас играет — парсим XML и строим map tvg-id -> программа
+    local now_epg_file="/tmp/iptv-now-epg.txt"
+    > "$now_epg_file"
+    if [ -f "$EPG_FILE" ]; then
+        local now_ts=$(date '+%Y%m%d%H%M%S')
+        awk -v now="$now_ts" '
+            /<programme / {
+                start=""; stop=""; channel=""
+                s = $0
+                if (match(s, /start="[0-9]+/)) start = substr(s, RSTART+7, RLENGTH-7)
+                if (match(s, /stop="[0-9]+/)) stop = substr(s, RSTART+6, RLENGTH-6)
+                if (match(s, /channel="[^"]+"/)) channel = substr(s, RSTART+9, RLENGTH-9)
+            }
+            /<title[^>]*>/ {
+                tmp = $0
+                if (match(tmp, /<title[^>]*>[^<]*<\/title>/)) {
+                    tmp = substr(tmp, RSTART, RLENGTH)
+                    gsub(/<[^>]*>/, "", tmp)
+                    title = tmp
+                }
+            }
+            /<\/programme>/ {
+                if (start != "" && stop != "" && start <= now && stop >= now && channel != "" && title != "") {
+                    print channel "\t" title
+                }
+                title = ""
+            }
+        ' "$EPG_FILE" > "$now_epg_file" 2>/dev/null
+    fi
+
+    # Каналы
     local channels=""
     if [ -f "$PLAYLIST_FILE" ]; then
         local idx=0
-        local name="" url="" group="" tvgid=""
+        local name="" url="" group="" tvgid="" logo=""
         while IFS= read -r line; do
             case "$line" in
                 "#EXTINF:"*)
                     name=$(echo "$line" | sed 's/.*,\(.*\)/\1/' | sed 's/ *$//')
                     group=$(echo "$line" | grep -o 'group-title="[^"]*"' | sed 's/group-title="//;s/"//')
                     tvgid=$(echo "$line" | grep -o 'tvg-id="[^"]*"' | sed 's/tvg-id="//;s/"//')
+                    logo=$(echo "$line" | grep -o 'tvg-logo="[^"]*"' | sed 's/tvg-logo="//;s/"//')
                     [ -z "$name" ] && name="Unknown"
-                    [ -z "$group" ] && group="General"
+                    [ -z "$group" ] && group="Общее"
                     ;;
                 http*|https*|rtsp*|rtmp*|udp*|rtp*)
                     url="$line"
+                    # Ищем текущую передачу по tvg-id
+                    local prog="—"
+                    if [ -n "$tvgid" ] && [ -s "$now_epg_file" ]; then
+                        prog=$(grep "^${tvgid}	" "$now_epg_file" | head -1 | cut -f2)
+                        [ -z "$prog" ] && prog="—"
+                    fi
+                    local logo_html=""
+                    if [ -n "$logo" ]; then
+                        logo_html="<img src=\"$logo\" style=\"width:24px;height:24px;border-radius:4px;object-fit:contain;vertical-align:middle;margin-right:6px\" onerror=\"this.style.display='none'\">"
+                    fi
                     channels="${channels}<tr data-group=\"${group}\" data-name=\"${name}\" data-idx=\"${idx}\" data-url=\"${url}\">
 <td><span class=\"ch-status unknown\" id=\"st-${idx}\"></span></td>
-<td class=\"ch-name\" title=\"${name}\">${name}</td>
+<td class=\"ch-name\" title=\"${name}\">${logo_html}${name}</td>
 <td class=\"ch-group\">${group}</td>
-<td class=\"ch-prog\">—</td>
-<td><button class=\"b bsm bp\" onclick=\"checkCh(${idx},'${url}')\">Ping</button></td>
-<td class=\"ch-actions\"><button class=\"b bsm bp\" onclick=\"editCh(${idx})\">Edit</button></td>
+<td class=\"ch-prog\" title=\"${prog}\">${prog}</td>
+<td><button class=\"b bsm bp\" onclick=\"checkCh(${idx},'${url}')\">Пинг</button></td>
+<td class=\"ch-actions\"><button class=\"b bsm bo\" onclick=\"editCh(${idx})\">Изм.</button></td>
 </tr>
 "
                     idx=$((idx+1))
-                    [ "$idx" -ge 100 ] && break
-                    name=""; url=""; group=""; tvgid=""
+                    [ "$idx" -ge 200 ] && break
+                    name=""; url=""; group=""; tvgid=""; logo=""
                     ;;
             esac
         done < "$PLAYLIST_FILE"
     fi
+    rm -f "$now_epg_file"
 
     # Группы для фильтра
     local group_opts=""
@@ -214,16 +256,16 @@ if [ -n "\$ACTION" ]; then
     json_hdr
     case "\$ACTION" in
         check_channel)
-            URL=$(echo "$POST_DATA" | sed -n 's/.*url=\([^&]*\).*/\1/p')
-            case "$URL" in
+            URL=\$(echo "\$POST_DATA" | sed -n 's/.*url=\\([^&]*\\).*/\\1/p')
+            case "\$URL" in
                 http*|https*)
-                    SPIDER_OUT=$(wget --spider --timeout=4 --tries=1 --header="User-Agent: VLC/3.0" "$URL" 2>&1)
-                    SPIDER_EXIT=$?
-                    if [ "$SPIDER_EXIT" -eq 0 ] 2>/dev/null; then
+                    SPIDER_OUT=\$(wget --spider --timeout=4 --tries=1 --header="User-Agent: VLC/3.0" "\$URL" 2>&1)
+                    SPIDER_EXIT=\$?
+                    if [ "\$SPIDER_EXIT" -eq 0 ] 2>/dev/null; then
                         printf '{"status":"ok","online":true}'
                     else
-                        HAS_RESP=$(echo "$SPIDER_OUT" | grep -c "HTTP/\|200\|301\|302\|304\|403\|405\|500")
-                        if [ "$HAS_RESP" -gt 0 ] 2>/dev/null; then
+                        HAS_RESP=\$(echo "\$SPIDER_OUT" | grep -c "HTTP/\\|200\\|301\\|302\\|304\\|403\\|405\\|500")
+                        if [ "\$HAS_RESP" -gt 0 ] 2>/dev/null; then
                             printf '{"status":"ok","online":true}'
                         else
                             printf '{"status":"ok","online":false}'
@@ -234,7 +276,7 @@ if [ -n "\$ACTION" ]; then
                     printf '{"status":"ok","online":true}'
                     ;;
                 rtsp*|rtmp*)
-                    if wget --spider --timeout=4 --tries=1 "$URL" 2>/dev/null; then
+                    if wget --spider --timeout=4 --tries=1 "\$URL" 2>/dev/null; then
                         printf '{"status":"ok","online":true}'
                     else
                         printf '{"status":"ok","online":false}'
@@ -283,15 +325,15 @@ if [ -n "\$ACTION" ]; then
             . "\$EC" 2>/dev/null
             case "\$PLAYLIST_TYPE" in
                 url)
-                    if wget -q --timeout=15 -O "$PL" "$PLAYLIST_URL" 2>/dev/null && [ -s "$PL" ]; then
-                        CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null || echo 0)
-                        mkdir -p /www/iptv; cp "$PL" /www/iptv/playlist.m3u
-                        AUTO_EPG=$(head -5 "$PL" | grep -o 'url-tvg="[^"]*"' | head -1 | sed 's/url-tvg="//;s/"//')
-                        if [ -n "$AUTO_EPG" ]; then
-                            printf 'EPG_URL="%s"\n' "$AUTO_EPG" > "$EXC"
+                    if wget -q --timeout=15 -O "\$PL" "\$PLAYLIST_URL" 2>/dev/null && [ -s "\$PL" ]; then
+                        CH=\$(grep -c "^#EXTINF" "\$PL" 2>/dev/null || echo 0)
+                        mkdir -p /www/iptv; cp "\$PL" /www/iptv/playlist.m3u
+                        AUTO_EPG=\$(head -5 /etc/iptv/playlist.m3u | grep -o 'url-tvg="[^"]*"' | head -1 | sed 's/url-tvg="//;s/"//')
+                        if [ -n "\$AUTO_EPG" ]; then
+                            printf 'EPG_URL="%s"\\n' "\$AUTO_EPG" > "\$EXC"
                         fi
-                        NT=$(date '+%%d.%%m.%%Y %%H:%%M')
-                        printf '{"status":"ok","message":"Playlist updated! Channels: '"$CH"'"}'
+                        NT=\$(date '+%%d.%%m.%%Y %%H:%%M')
+                        printf '{"status":"ok","message":"Playlist updated! Channels: %s"}' "\$CH"
                     else printf '{"status":"error","message":"Download failed"}'; fi;;
                 provider)
                     . "\$PC" 2>/dev/null
@@ -343,7 +385,7 @@ if [ -n "\$ACTION" ]; then
                         printf 'EPG_URL="%s"\\n' "\$AUTO_EPG" > "\$EXC"
                         EPG_MSG=" | EPG найден: \$AUTO_EPG"
                     fi
-                    printf '{"status":"ok","message":"Playlist loaded! Channels: '"\$CH"'"'"\$EPG_MSG"'}'
+                    printf '{"status":"ok","message":"Playlist loaded! Channels: %s%s"}' "\$CH" "\$EPG_MSG"
                 else printf '{"status":"error","message":"Download failed"}'; fi
             else printf '{"status":"error","message":"URL required"}'; fi
             ;;
@@ -713,7 +755,9 @@ load_playlist_url() {
     echo -ne "${YELLOW}URL: ${NC}"; read PLAYLIST_URL </dev/tty
     [ -z "$PLAYLIST_URL" ] && { echo_error "URL пуст!"; PAUSE; return 1; }
     echo_info "Скачиваем..."
-    if wget -q --timeout=15 -O "$PLAYLIST_FILE" "$PLAYLIST_URL" 2>/dev/null && [ -s "$PLAYLIST_FILE" ]; then
+    local WGET_OPT="-q --timeout=15"
+    wget --help 2>&1 | grep -q "no-check-certificate" && WGET_OPT="$WGET_OPT --no-check-certificate"
+    if wget $WGET_OPT -O "$PLAYLIST_FILE" "$PLAYLIST_URL" 2>/dev/null && [ -s "$PLAYLIST_FILE" ]; then
         local ch=$(get_ch)
         echo_success "Загружен! Каналов: $ch"
         save_config "url" "$PLAYLIST_URL" ""
