@@ -18,6 +18,9 @@ SCHEDULE_FILE="$IPTV_DIR/schedule.conf"
 HTTPD_PID="/var/run/iptv-httpd.pid"
 
 mkdir -p "$IPTV_DIR"
+[ -f "$CONFIG_FILE" ] || touch "$CONFIG_FILE"
+[ -f "$EPG_CONFIG" ] || touch "$EPG_CONFIG"
+[ -f "$SCHEDULE_FILE" ] || touch "$SCHEDULE_FILE"
 
 echo_color() { echo -e "${MAGENTA}$1${NC}"; }
 echo_success() { echo -e "${GREEN}$1${NC}"; }
