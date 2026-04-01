@@ -86,33 +86,36 @@ generate_cgi() {
 
     local channels="" group_opts=""
     if [ -f "$PLAYLIST_FILE" ]; then
-        # Generate channels.json via awk (reliable for any size)
+        # Generate channels JS via awk (no JSON parsing needed)
         mkdir -p /www/iptv
-        awk 'BEGIN{printf "["}
-            /#EXTINF:/ {
-                name=""; group=""; tvgid=""; logo=""
-                n=$0
-                if(match(n,/,/)) name=substr(n,RSTART+1)
-                gsub(/^ +| +$/,"",name)
-                if(match(n,/group-title="[^"]*"/)) { group=substr(n,RSTART+12,RLENGTH-13) }
-                if(match(n,/tvg-id="[^"]*"/)) { tvgid=substr(n,RSTART+9,RLENGTH-10) }
-                if(match(n,/tvg-logo="[^"]*"/)) { logo=substr(n,RSTART+11,RLENGTH-12) }
-                if(name=="") name="Unknown"
-                if(group=="") group="Общее"
-            }
-            /^http|^https|^rtsp|^rtmp|^udp|^rtp/ {
-                url=$0
-                gsub(/\\/,"\\\\",name); gsub(/"/,"\\\"",name)
-                gsub(/\\/,"\\\\",group); gsub(/"/,"\\\"",group)
-                gsub(/\\/,"\\\\",url); gsub(/"/,"\\\"",url)
-                gsub(/\\/,"\\\\",logo); gsub(/"/,"\\\"",logo)
-                gsub(/\\/,"\\\\",tvgid); gsub(/"/,"\\\"",tvgid)
-                if(idx>0) printf ","
-                printf "{\"i\":%d,\"n\":\"%s\",\"g\":\"%s\",\"u\":\"%s\",\"t\":\"%s\",\"l\":\"%s\"}", idx++, name, group, url, tvgid, logo
-                if(idx>=5000) exit
-            }
-            END{printf "]"}
-        ' "$PLAYLIST_FILE" > /www/iptv/channels.json 2>/dev/null
+        {
+            echo "var allCh=["
+            awk '
+                /#EXTINF:/ {
+                    name=""; group=""; tvgid=""; logo=""
+                    n=$0
+                    if(match(n,/,/)) name=substr(n,RSTART+1)
+                    gsub(/^[ \t]+|[ \t]+$/,"",name)
+                    if(match(n,/group-title="[^"]*"/)) { group=substr(n,RSTART+12,RLENGTH-13) }
+                    if(match(n,/tvg-id="[^"]*"/)) { tvgid=substr(n,RSTART+9,RLENGTH-10) }
+                    if(match(n,/tvg-logo="[^"]*"/)) { logo=substr(n,RSTART+11,RLENGTH-12) }
+                    if(name=="") name="Unknown"
+                    if(group=="") group="General"
+                }
+                /^http|^https|^rtsp|^rtmp|^udp|^rtp/ {
+                    url=$0
+                    gsub(/\\/, "\\\\", name); gsub(/"/, "\\\"", name); gsub(/\t/, "", name); gsub(/\r/, "", name)
+                    gsub(/\\/, "\\\\", group); gsub(/"/, "\\\"", group); gsub(/\t/, "", group); gsub(/\r/, "", group)
+                    gsub(/\\/, "\\\\", url); gsub(/"/, "\\\"", url); gsub(/\t/, "", url); gsub(/\r/, "", url)
+                    gsub(/\\/, "\\\\", logo); gsub(/"/, "\\\"", logo); gsub(/\t/, "", logo); gsub(/\r/, "", logo)
+                    gsub(/\\/, "\\\\", tvgid); gsub(/"/, "\\\"", tvgid); gsub(/\t/, "", tvgid); gsub(/\r/, "", tvgid)
+                    if(idx>0) printf ","
+                    printf "{i:%d,n:\"%s\",g:\"%s\",u:\"%s\",t:\"%s\",l:\"%s\"}", idx++, name, group, url, tvgid, logo
+                    if(idx>=5000) exit
+                }
+            ' "$PLAYLIST_FILE"
+            echo "];"
+        } > /www/iptv/ch.js 2>/dev/null
 
         echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done > /tmp/iptv-go.txt
         group_opts=$(cat /tmp/iptv-go.txt 2>/dev/null)
@@ -418,15 +421,15 @@ function setPlUrl(){var u=document.getElementById('pl-u').value;if(!u){toast('В
 function setEpgUrl(){var u=document.getElementById('epg-u').value;if(!u){toast('Введите ссылку','err');return}act('set_epg_url','url='+encodeURIComponent(u))}
 function saveSched(){var p=document.getElementById('s-pl').value,e=document.getElementById('s-epg').value;act('set_schedule','playlist_interval='+p+'&epg_interval='+e)}
 function loadRaw(){var x=new XMLHttpRequest();x.open('GET','/playlist.m3u',true);x.onload=function(){document.getElementById('pl-r').value=x.responseText};x.send()}
-// Load channels from JSON
+// Load channels from JS
 (function(){
-    var x=new XMLHttpRequest();x.open('GET','/channels.json',true);
-    x.onload=function(){
-        try{allCh=JSON.parse(x.responseText);renderRows(allCh)}
-        catch(e){document.getElementById('ch-loading').innerHTML='Ошибка загрузки каналов'}
+    var s=document.createElement('script');
+    s.onload=function(){
+        try{renderRows(allCh)}catch(e){document.getElementById('ch-loading').innerHTML='Ошибка: '+e.message}
     };
-    x.onerror=function(){document.getElementById('ch-loading').innerHTML='Ошибка сети'};
-    x.send()
+    s.onerror=function(){document.getElementById('ch-loading').innerHTML='Ошибка загрузки каналов'};
+    s.src='/ch.js?t='+Date.now();
+    document.head.appendChild(s)
 })();
 function editCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');document.getElementById('e-n').value=r.getAttribute('data-name');document.getElementById('e-u').value=r.getAttribute('data-url');document.getElementById('e-g').value=r.getAttribute('data-group');document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)}
 function closeModal(){document.getElementById('em').classList.remove('open')}
