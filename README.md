@@ -1,4 +1,4 @@
-# IPTV Manager для OpenWrt v1.1
+# IPTV Manager для OpenWrt v2.3
 
 Скрипт для настройки IPTV на роутере OpenWrt с веб-админ панелью, EPG телепрограммой и расписанием обновлений.
 
