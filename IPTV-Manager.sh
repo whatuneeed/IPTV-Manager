@@ -234,48 +234,13 @@ if [ -n "$ACTION" ]; then
                     case "$URL" in
                         *.m3u8*|*.m3u*)
                             TF="/tmp/iptv-chk-$$"
-                            TSF="/tmp/iptv-chk-seg-$$"
-                            BASE=$(echo "$URL" | sed 's|/[^/]*$||')
                             wget -q --timeout=8 --tries=1 -O "$TF" --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
-                            if [ -s "$TF" ]; then
-                                if grep -q "#EXT-X-STREAM-INF" "$TF" 2>/dev/null; then
-                                    VARIANT=$(grep -v "^[#;]" "$TF" | grep -v "^$" | head -1)
-                                    case "$VARIANT" in
-                                        http*) VURL="$VARIANT"; VBASE=$(echo "$VURL" | sed 's|/[^/]*$||') ;;
-                                        /*)
-                                            PROTO=$(echo "$URL" | sed -n 's|^\(http[s]*\)://.*|\1|p')
-                                            HOST=$(echo "$URL" | sed -n 's|^http[s]*://\([^/]*\).*|\1|p')
-                                            VURL="$PROTO://$HOST$VARIANT"
-                                            VBASE=$(echo "$VURL" | sed 's|/[^/]*$||') ;;
-                                        *) VURL="$BASE/$VARIANT"; VBASE="$BASE/$(echo "$VARIANT" | sed 's|/[^/]*$||')" ;;
-                                    esac
-                                    wget -q --timeout=8 --tries=1 -O "$TF" --header="User-Agent: VLC/3.0" "$VURL" 2>/dev/null
-                                else
-                                    VBASE="$BASE"
-                                fi
-                                SEG=$(grep -v "^[#;]" "$TF" | grep -v "^$" | head -1)
-                                if [ -n "$SEG" ]; then
-                                    case "$SEG" in
-                                        http*) SURL="$SEG" ;;
-                                        /*)
-                                            PROTO=$(echo "$URL" | sed -n 's|^\(http[s]*\)://.*|\1|p')
-                                            HOST=$(echo "$URL" | sed -n 's|^http[s]*://\([^/]*\).*|\1|p')
-                                            SURL="$PROTO://$HOST$SEG" ;;
-                                        *) SURL="$VBASE/$SEG" ;;
-                                    esac
-                                    wget -q --timeout=8 --tries=1 -O "$TSF" --header="User-Agent: VLC/3.0" "$SURL" 2>/dev/null
-                                    if [ -s "$TSF" ]; then
-                                        printf '{"status":"ok","online":true}'
-                                    else
-                                        printf '{"status":"ok","online":false}'
-                                    fi
-                                else
-                                    printf '{"status":"ok","online":true}'
-                                fi
+                            if [ -s "$TF" ] && grep -q "EXTM3U" "$TF" 2>/dev/null; then
+                                printf '{"status":"ok","online":true}'
                             else
                                 printf '{"status":"ok","online":false}'
                             fi
-                            rm -f "$TF" "$TSF" ;;
+                            rm -f "$TF" ;;
                         *)
                             TF2="/tmp/iptv-chk-dl-$$"
                             wget -q --timeout=8 --tries=1 -O "$TF2" --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
