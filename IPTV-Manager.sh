@@ -231,26 +231,8 @@ if [ -n "$ACTION" ]; then
             URL=$(echo "$URL" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
             case "$URL" in
                 http*|https*)
-                    case "$URL" in
-                        *.m3u8*|*.m3u*)
-                            TF="/tmp/iptv-chk-$$"
-                            wget -q --timeout=8 --tries=1 -O "$TF" --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
-                            if [ -s "$TF" ] && grep -q "EXTM3U" "$TF" 2>/dev/null; then
-                                printf '{"status":"ok","online":true}'
-                            else
-                                printf '{"status":"ok","online":false}'
-                            fi
-                            rm -f "$TF" ;;
-                        *)
-                            TF2="/tmp/iptv-chk-dl-$$"
-                            wget -q --timeout=8 --tries=1 -O "$TF2" --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
-                            if [ -s "$TF2" ]; then
-                                printf '{"status":"ok","online":true}'
-                            else
-                                printf '{"status":"ok","online":false}'
-                            fi
-                            rm -f "$TF2" ;;
-                    esac ;;
+                    wget -q --timeout=8 --spider --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
+                    [ $? -eq 0 ] && printf '{"status":"ok","online":true}' || printf '{"status":"ok","online":false}' ;;
                 udp*|rtp*) printf '{"status":"ok","online":true}' ;;
                 *) printf '{"status":"ok","online":false}' ;;
             esac ;;
