@@ -88,6 +88,39 @@ generate_cgi() {
     if [ -f "$PLAYLIST_FILE" ]; then
         # Generate channels HTML with now-playing from EPG
         mkdir -p /www/iptv
+
+        # Generate player page
+        cat > /www/iptv/player.html << 'PLEOF'
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IPTV Player</title>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e1a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:20px}
+h2{margin-bottom:16px;color:#3b82f6}
+#player-wrap{width:100%;max-width:960px;background:#000;border-radius:12px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.4)}
+video{width:100%;display:block}
+#url-bar{margin-top:12px;padding:8px 12px;background:#1e293b;border-radius:6px;font-size:12px;color:#94a3b8;word-break:break-all;max-width:960px;width:100%;text-align:center}
+.err{color:#ef4444;text-align:center;margin-top:20px;font-size:14px}
+</style></head><body>
+<h2>▶ IPTV Player</h2>
+<div id="player-wrap"><video id="video" controls autoplay></video></div>
+<div id="url-bar"></div>
+<script>
+var url=new URLSearchParams(window.location.search).get('url');
+if(!url){document.getElementById('url-bar').innerHTML='Нет URL';document.getElementById('player-wrap').style.display='none'}
+else{
+document.getElementById('url-bar').textContent=url;
+var v=document.getElementById('video');
+if(Hls.isSupported()){var h=new Hls({maxBufferLength:30});h.loadSource(url);h.attachMedia(v);h.on(Hls.Events.ERROR,function(e,d){if(d.fatal){if(d.type===Hls.ErrorTypes.NETWORK_ERROR)h.startLoad();else if(d.type===Hls.ErrorTypes.MEDIA_ERROR)h.recoverMediaError();else{document.getElementById('player-wrap').innerHTML='<div class="err">Ошибка воспроизведения. Попробуйте скопировать ссылку и открыть на <a href="https://www.m3u8-player.org/ru/" target="_blank">m3u8-player.org</a></div>'}}})}
+else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=url}
+else{document.getElementById('player-wrap').innerHTML='<div class="err">Браузер не поддерживает HLS</div>'}
+v.play().catch(function(){})
+}
+</script></body></html>
+PLEOF
+
         local now_ts=$(date '+%Y%m%d%H%M%S' 2>/dev/null)
         awk -v now="$now_ts" -v epg_file="$EPG_FILE" '
 BEGIN {
@@ -122,15 +155,21 @@ BEGIN {
     if(match(n,/tvg-logo="[^"]*"/)) { logo=substr(n,RSTART+11,RLENGTH-12) }
     if(name=="") name="Unknown"
     if(grp=="") grp="General"
+    # HTML-escape
+    gsub(/&/, "\\&amp;", name); gsub(/</, "\\&lt;", name); gsub(/>/, "\\&gt;", name); gsub(/"/, "\\&quot;", name)
+    gsub(/&/, "\\&amp;", grp); gsub(/</, "\\&lt;", grp); gsub(/>/, "\\&gt;", grp); gsub(/"/, "\\&quot;", grp)
+    gsub(/&/, "\\&amp;", logo); gsub(/</, "\\&lt;", logo); gsub(/>/, "\\&gt;", logo); gsub(/"/, "\\&quot;", logo)
+    gsub(/&/, "\\&amp;", tvgid); gsub(/</, "\\&lt;", tvgid); gsub(/>/, "\\&gt;", tvgid); gsub(/"/, "\\&quot;", tvgid)
 }
 /^http/ || /^https/ || /^rtsp/ || /^rtmp/ || /^udp/ || /^rtp/ {
     url=$0
+    gsub(/&/, "\\&amp;", url); gsub(/</, "\\&lt;", url); gsub(/>/, "\\&gt;", url); gsub(/"/, "\\&quot;", url)
     li=""
-    if(logo!="") li="<img src=\""logo"\" style=\"width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px\" onerror=\"this.style.display='"'"'none'"'"'\">"
+    if(logo!="") li="<img src=\""logo"\" style=\"width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px\" onerror=\"this.style.display='none'\">"
     prog="—"
     if(tvgid!="" && tvgid in epg) prog=epg[tvgid]
-    gsub(/&/, "\\&amp;", prog); gsub(/</, "\\&lt;", prog); gsub(/>/, "\\&gt;", prog)
-    printf "<tr data-group=\"%s\" data-name=\"%s\" data-idx=\"%d\" data-url=\"%s\"><td><span class=\"ch-st unknown\" id=\"st-%d\"></span></td><td class=\"ch-n\">%s%s</td><td class=\"ch-g\">%s</td><td class=\"ch-p\" title=\"%s\">%s</td><td><button class=\"b bsm bp\" onclick=\"checkCh(%d,'"'"'%s'"'"')\">Пинг</button></td><td><button class=\"b bsm bo\" onclick=\"editCh(%d)\">Изм.</button></td></tr>\n", grp, name, idx, url, idx, li, name, grp, prog, prog, idx, url, idx
+    gsub(/&/, "\\&amp;", prog); gsub(/</, "\\&lt;", prog); gsub(/>/, "\\&gt;", prog); gsub(/"/, "\\&quot;", prog)
+    printf "<tr data-group=\"%s\" data-name=\"%s\" data-idx=\"%d\" data-url=\"%s\"><td><span class=\"ch-st unknown\" id=\"st-%d\"></span></td><td class=\"ch-n\">%s%s</td><td class=\"ch-g\">%s</td><td class=\"ch-p\">%s</td><td><button class=\"b bsm bp\" onclick=\"checkCh(%d,'%s')\">Пинг</button></td><td><button class=\"b bsm bs\" onclick=\"watchCh(%d,'%s')\">▶</button></td><td><button class=\"b bsm bo\" onclick=\"editCh(%d)\">Изм.</button></td></tr>\n", grp, name, idx, url, idx, li, name, grp, prog, idx, url, idx, url, idx
     idx++
     if(idx>=1500) exit
 }
@@ -375,10 +414,10 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/epg.xml</code><button onclick="cp(this)">Копировать</button></div>
 <div class="tb"><button class="t a" onclick="st('status',this)">Каналы</button><button class="t" onclick="st('playlist',this)">Плейлист</button><button class="t" onclick="st('epg',this)">Телепрограмма</button><button class="t" onclick="st('settings',this)">Настройки</button></div>
 <div class="pn a" id="p-status"><h2>Список каналов</h2>
+<div style="margin-bottom:12px">'"$(cat /www/iptv/stats.html 2>/dev/null)"'</div>
 <div class="fb"><select id="f-g" onchange="filterCh()"><option value="">Все группы</option>$GOPTS</select><input type="text" id="f-s" placeholder="Поиск..." oninput="filterCh()"><button class="b bp bsm" onclick="checkAll()">Проверить все</button></div>
-<div style="overflow-x:auto"><table class="ch-t"><thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:80px">Пинг</th><th>Действия</th></tr></thead><tbody id="ch-tb">'"$CHROWS"'</tbody></table></div>
+<div style="overflow-x:auto"><table class="ch-t"><thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:70px">Пинг</th><th style="width:40px"></th><th>Действия</th></tr></thead><tbody id="ch-tb">'"$CHROWS"'</tbody></table></div>
 <div id="pager" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
-<div style="margin-top:12px">'"$(cat /www/iptv/stats.html 2>/dev/null)"'</div>
 </div>
 <div class="pn" id="p-playlist"><h2>Плейлист</h2>
 <div class="fg"><label>Ссылка на плейлист</label><input type="url" id="pl-u" placeholder="http://example.com/playlist.m3u" value="$PURL"><div class="hint">Вставьте ссылку на M3U/M3U8 плейлист</div></div>
@@ -395,7 +434,7 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <hr>
 <h3>Бэкап и восстановление</h3>
 <div class="sg"><div class="sc"><h3>Экспорт</h3><div class="si">Скачать архив со всеми настройками, плейлистом и EPG</div><div class="bg" style="margin-top:8px"><button class="b bs bsm" onclick="act('backup','')">Скачать бэкап</button></div></div>
-<div class="sc"><h3>Импорт</h3><div class="fg" style="margin-top:4px"><input type="file" id="imp-file" accept=".tar.gz"></div><div class="bg"><button class="b bp bsm" onclick="doImport()">Восстановить</button></div></div></div>
+<div class="sc"><h3>Импорт</h3><div class="bg" style="margin-top:4px"><label class="b bs bsm" for="imp-file" style="cursor:pointer">Выберите файл</label><input type="file" id="imp-file" accept=".tar.gz" style="display:none"><button class="b bp bsm" onclick="doImport()">Восстановить</button></div></div></div>
 </div>
 <div class="modal" id="em"><div class="modal-box"><h3>Редактировать канал</h3>
 <div class="fg"><label>Название</label><input type="text" id="e-n" readonly></div>
@@ -433,6 +472,7 @@ function goPage(n){var pages=Math.ceil(allRows.length/PS);if(n<0||n>=pages)retur
 function filterCh(){var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();allRows=[];var vis=0;document.querySelectorAll('#ch-tb tr').forEach(function(r){var rg=r.getAttribute('data-group'),rn=r.getAttribute('data-name').toLowerCase();var show=(!g||rg===g)&&(!s||rn.indexOf(s)>=0);r.style.display=show?'':'none';allRows.push(r);if(show)vis++});CP=0;renderPager()}
 function editCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');document.getElementById('e-n').value=r.getAttribute('data-name');document.getElementById('e-u').value=r.getAttribute('data-url');document.getElementById('e-g').value=r.getAttribute('data-group');document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)}
 function closeModal(){document.getElementById('em').classList.remove('open')}
+function watchCh(i,u){window.open('/player.html?url='+encodeURIComponent(u),'_blank')}
 function saveEdit(){var i=document.getElementById('em').getAttribute('data-idx'),u=document.getElementById('e-u').value,g=document.getElementById('e-g').value,x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.send('action=update_channel&idx='+i+'&new_url='+encodeURIComponent(u)+'&new_group='+encodeURIComponent(g))}
 function setPlUrl(){var u=document.getElementById('pl-u').value;if(!u){toast('Введите ссылку','err');return}act('set_playlist_url','url='+encodeURIComponent(u))}
 function setEpgUrl(){var u=document.getElementById('epg-u').value;if(!u){toast('Введите ссылку','err');return}act('set_epg_url','url='+encodeURIComponent(u))}
