@@ -66,6 +66,14 @@ int_text() {
         12) echo "Каждые 12ч";; 24) echo "Раз в сутки";; *) echo "Выкл";; esac
 }
 
+detect_builtin_epg() {
+    [ -f "$PLAYLIST_FILE" ] || return
+    local epg=""
+    epg=$(head -5 "$PLAYLIST_FILE" | grep -o 'url-tvg="[^"]*"' | head -1 | sed 's/url-tvg="//;s/"//')
+    [ -z "$epg" ] && epg=$(head -5 "$PLAYLIST_FILE" | grep -o "url-tvg='[^']*'" | head -1 | sed "s/url-tvg='//;s/'//")
+    echo "$epg"
+}
+
 # ==========================================
 # Генерация CGI-админки НА РОУТЕРЕ (без CRLF проблем)
 # CGI полностью самодостаточный — все функции внутри
@@ -73,11 +81,18 @@ int_text() {
 generate_cgi() {
     # Собираем данные для подстановки
     load_config; load_epg; load_sched
+    local builtin_epg=$(detect_builtin_epg)
     local ch=$(get_ch)
     local psz=$(file_size "$PLAYLIST_FILE")
     local esz=$(file_size "$EPG_FILE")
     local purl=""; [ "$PLAYLIST_TYPE" = "url" ] && purl="$PLAYLIST_URL"
-    local eurl=""; [ -n "$EPG_URL" ] && eurl="$EPG_URL"
+    local eurl=""
+    if [ -n "$EPG_URL" ]; then
+        eurl="$EPG_URL"
+    elif [ -n "$builtin_epg" ]; then
+        eurl="$builtin_epg"
+        printf 'EPG_URL="%s"\n' "$builtin_epg" > "$EPG_CONFIG"
+    fi
     local pi="${PLAYLIST_INTERVAL:-0}"
     local ei="${EPG_INTERVAL:-0}"
     local plu="${PLAYLIST_LAST_UPDATE:----}"
@@ -199,41 +214,31 @@ if [ -n "\$ACTION" ]; then
     json_hdr
     case "\$ACTION" in
         check_channel)
-            URL=\$(echo "\$POST_DATA" | sed -n 's/.*url=\\([^&]*\\).*/\\1/p')
-            case "\$URL" in
+            URL=$(echo "$POST_DATA" | sed -n 's/.*url=\([^&]*\).*/\1/p')
+            case "$URL" in
                 http*|https*)
-                    # For IPTV streams (infinite TS/M3U8), wget never finishes downloading.
-                    # Strategy: wget in background, wait 4s, check if we got HTTP 200 headers.
-                    TMPF="/tmp/iptv-check-\$\$.txt"
-                    (wget --timeout=5 --tries=1 --max-redirect=3 -O /dev/null -S --header="User-Agent: VLC/3.0" "\$URL" 2>"\$TMPF" &)
-                    WGET_PID=\$!
-                    sleep 4
-                    if kill -0 \$WGET_PID 2>/dev/null; then
-                        kill \$WGET_PID 2>/dev/null
-                        wait \$WGET_PID 2>/dev/null
-                    fi
-                    HTTP_CODE=\$(grep "HTTP/" "\$TMPF" 2>/dev/null | tail -1 | awk '{print \$2}' | tr -d '\\r')
-                    rm -f "\$TMPF"
-                    if [ -n "\$HTTP_CODE" ] && [ "\$HTTP_CODE" -ge 200 ] 2>/dev/null && [ "\$HTTP_CODE" -lt 500 ] 2>/dev/null; then
+                    SPIDER_OUT=$(wget --spider --timeout=4 --tries=1 --header="User-Agent: VLC/3.0" "$URL" 2>&1)
+                    SPIDER_EXIT=$?
+                    if [ "$SPIDER_EXIT" -eq 0 ] 2>/dev/null; then
                         printf '{"status":"ok","online":true}'
                     else
-                        printf '{"status":"ok","online":false}'
+                        HAS_RESP=$(echo "$SPIDER_OUT" | grep -c "HTTP/\|200\|301\|302\|304\|403\|405\|500")
+                        if [ "$HAS_RESP" -gt 0 ] 2>/dev/null; then
+                            printf '{"status":"ok","online":true}'
+                        else
+                            printf '{"status":"ok","online":false}'
+                        fi
                     fi
                     ;;
                 udp*|rtp*)
                     printf '{"status":"ok","online":true}'
                     ;;
                 rtsp*|rtmp*)
-                    TMPF="/tmp/iptv-check-\$\$.txt"
-                    (timeout 5 wget -q --timeout=3 -O /dev/null "\$URL" 2>"\$TMPF" &)
-                    sleep 4
-                    kill %1 2>/dev/null; wait %1 2>/dev/null
-                    if grep -qi "200\|connected\|playing" "\$TMPF" 2>/dev/null; then
+                    if wget --spider --timeout=4 --tries=1 "$URL" 2>/dev/null; then
                         printf '{"status":"ok","online":true}'
                     else
                         printf '{"status":"ok","online":false}'
                     fi
-                    rm -f "\$TMPF"
                     ;;
                 *)
                     printf '{"status":"ok","online":false}'
@@ -278,11 +283,15 @@ if [ -n "\$ACTION" ]; then
             . "\$EC" 2>/dev/null
             case "\$PLAYLIST_TYPE" in
                 url)
-                    if wget -q --timeout=15 -O "\$PL" "\$PLAYLIST_URL" 2>/dev/null && [ -s "\$PL" ]; then
-                        CH=\$(grep -c "^#EXTINF" "\$PL" 2>/dev/null || echo 0)
-                        mkdir -p /www/iptv; cp "\$PL" /www/iptv/playlist.m3u
-                        NT=\$(date '+%%d.%%m.%%Y %%H:%%M')
-                        printf '{"status":"ok","message":"Playlist updated! Channels: '"\$CH"'"}'
+                    if wget -q --timeout=15 -O "$PL" "$PLAYLIST_URL" 2>/dev/null && [ -s "$PL" ]; then
+                        CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null || echo 0)
+                        mkdir -p /www/iptv; cp "$PL" /www/iptv/playlist.m3u
+                        AUTO_EPG=$(head -5 "$PL" | grep -o 'url-tvg="[^"]*"' | head -1 | sed 's/url-tvg="//;s/"//')
+                        if [ -n "$AUTO_EPG" ]; then
+                            printf 'EPG_URL="%s"\n' "$AUTO_EPG" > "$EXC"
+                        fi
+                        NT=$(date '+%%d.%%m.%%Y %%H:%%M')
+                        printf '{"status":"ok","message":"Playlist updated! Channels: '"$CH"'"}'
                     else printf '{"status":"error","message":"Download failed"}'; fi;;
                 provider)
                     . "\$PC" 2>/dev/null
@@ -298,7 +307,11 @@ if [ -n "\$ACTION" ]; then
         refresh_epg)
             . "\$EXC" 2>/dev/null
             if [ -n "\$EPG_URL" ]; then
-                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" -O "\$EF" "\$EPG_URL" 2>/dev/null && [ -s "\$EF" ]; then
+                WGET_CMD="wget -q --timeout=30 --header=\\"User-Agent: VLC/3.0\\""
+                if wget --help 2>&1 | grep -q "no-check-certificate"; then
+                    WGET_CMD="\$WGET_CMD --no-check-certificate"
+                fi
+                if eval "\$WGET_CMD -O \\"\$EF\\" \\"\$EPG_URL\\"" 2>/dev/null && [ -s "\$EF" ]; then
                     # Auto-detect and decompress gzip (by magic bytes, not just extension)
                     MAGIC=\$(hexdump -n 2 -e '2/1 "%02x"' "\$EF" 2>/dev/null)
                     if [ "\$MAGIC" = "1f8b" ]; then
@@ -322,7 +335,13 @@ if [ -n "\$ACTION" ]; then
                 if wget -q --timeout=15 -O "\$PL" "\$NU" 2>/dev/null && [ -s "\$PL" ]; then
                     CH=\$(grep -c "^#EXTINF" "\$PL" 2>/dev/null || echo 0)
                     mkdir -p /www/iptv; cp "\$PL" /www/iptv/playlist.m3u
-                    printf '{"status":"ok","message":"Playlist loaded! Channels: '"\$CH"'"}'
+                    AUTO_EPG=\$(head -5 "\$PL" | grep -o 'url-tvg="[^"]*"' | head -1 | sed 's/url-tvg="//;s/"//')
+                    EPG_MSG=""
+                    if [ -n "\$AUTO_EPG" ]; then
+                        printf 'EPG_URL="%s"\\n' "\$AUTO_EPG" > "\$EXC"
+                        EPG_MSG=" | EPG найден: \$AUTO_EPG"
+                    fi
+                    printf '{"status":"ok","message":"Playlist loaded! Channels: '"\$CH"'"'"\$EPG_MSG"'}'
                 else printf '{"status":"error","message":"Download failed"}'; fi
             else printf '{"status":"error","message":"URL required"}'; fi
             ;;
@@ -330,7 +349,11 @@ if [ -n "\$ACTION" ]; then
             NU=\$(echo "\$POST_DATA" | sed -n 's/.*url=\\([^&]*\\).*/\\1/p')
             if [ -n "\$NU" ]; then
                 printf 'EPG_URL="%s"\\n' "\$NU" > "\$EXC"
-                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" -O "\$EF" "\$NU" 2>/dev/null && [ -s "\$EF" ]; then
+                WGET_CMD="wget -q --timeout=30 --header=\\"User-Agent: VLC/3.0\\""
+                if wget --help 2>&1 | grep -q "no-check-certificate"; then
+                    WGET_CMD="\$WGET_CMD --no-check-certificate"
+                fi
+                if eval "\$WGET_CMD -O \\"\$EF\\" \\"\$NU\\"" 2>/dev/null && [ -s "\$EF" ]; then
                     # Handle gzip files
                     case "\$NU" in
                         *.gz)
@@ -381,69 +404,74 @@ cat << HTMLEND
 <title>IPTV Manager</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0e1a;color:#e2e8f0;min-height:100vh}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;color:#1a1a2e;min-height:100vh}
 .c{max-width:1200px;margin:0 auto;padding:16px}
-.h{text-align:center;padding:20px 0 16px;border-bottom:1px solid #1e293b;margin-bottom:16px}
-.h h1{font-size:22px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-.h p{color:#64748b;font-size:12px;margin-top:4px}
+.h{text-align:center;padding:20px 0 16px;border-bottom:2px solid #e0e0e0;margin-bottom:16px}
+.h h1{font-size:22px;color:#1a73e8}
+.h p{color:#666;font-size:12px;margin-top:4px}
 .st{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:16px}
-.s{background:#1e293b;border-radius:8px;padding:12px;text-align:center;border:1px solid #334155}
-.sv{font-size:18px;font-weight:700;color:#3b82f6}
-.sl{font-size:10px;color:#64748b;text-transform:uppercase;margin-top:2px}
-.ub{background:#0f172a;border:1px solid #334155;border-radius:6px;padding:8px;margin:6px 0;display:flex;align-items:center;gap:6px}
-.ub code{flex:1;font-size:12px;color:#3b82f6;word-break:break-all}
-.ub button{padding:4px 8px;background:#334155;border:none;border-radius:4px;color:#e2e8f0;cursor:pointer;font-size:11px}
-.tb{display:flex;gap:4px;margin-bottom:14px;background:#1e293b;border-radius:8px;padding:4px;overflow-x:auto}
-.t{flex:1;padding:9px 10px;border:none;background:transparent;color:#94a3b8;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap}
-.t:hover{color:#e2e8f0}.t.a{background:#3b82f6;color:#fff}
-.pn{display:none;background:#1e293b;border-radius:12px;padding:16px;border:1px solid #334155;margin-bottom:10px}
+.s{background:#fff;border-radius:8px;padding:12px;text-align:center;border:1px solid #e0e0e0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.sv{font-size:18px;font-weight:700;color:#1a73e8}
+.sl{font-size:10px;color:#888;text-transform:uppercase;margin-top:2px}
+.ub{background:#fff;border:1px solid #e0e0e0;border-radius:6px;padding:8px;margin:6px 0;display:flex;align-items:center;gap:6px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.ub code{flex:1;font-size:12px;color:#1a73e8;word-break:break-all}
+.ub button{padding:4px 10px;background:#e8f0fe;border:1px solid #1a73e8;border-radius:4px;color:#1a73e8;cursor:pointer;font-size:11px}
+.ub button:hover{background:#1a73e8;color:#fff}
+.tb{display:flex;gap:4px;margin-bottom:14px;background:#fff;border-radius:8px;padding:4px;overflow-x:auto;border:1px solid #e0e0e0;box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.t{flex:1;padding:9px 10px;border:none;background:transparent;color:#666;border-radius:6px;cursor:pointer;font-size:12px;font-weight:500;white-space:nowrap}
+.t:hover{color:#1a73e8;background:#f5f5f5}.t.a{background:#1a73e8;color:#fff}
+.pn{display:none;background:#fff;border-radius:12px;padding:16px;border:1px solid #e0e0e0;margin-bottom:10px;box-shadow:0 1px 3px rgba(0,0,0,.06)}
 .pn.a{display:block}
-.pn h2{font-size:15px;margin-bottom:12px;color:#f1f5f9}
+.pn h2{font-size:15px;margin-bottom:12px;color:#1a1a2e}
 .fg{margin-bottom:10px}
-.fg label{display:block;font-size:11px;color:#94a3b8;margin-bottom:3px}
-.fg input,.fg textarea,.fg select{width:100%%;padding:8px 10px;background:#0a0e1a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
-.fg input:focus,.fg textarea:focus{outline:none;border-color:#3b82f6}
+.fg label{display:block;font-size:11px;color:#666;margin-bottom:3px}
+.fg input,.fg textarea,.fg select{width:100%%;padding:8px 10px;background:#fafafa;border:1px solid #d0d0d0;border-radius:6px;color:#1a1a2e;font-size:13px}
+.fg input:focus,.fg textarea:focus{outline:none;border-color:#1a73e8;box-shadow:0 0 0 2px rgba(26,115,232,.15)}
 .fg textarea{min-height:60px;font-family:monospace;font-size:11px;resize:vertical}
+.fg .hint{font-size:10px;color:#999;margin-top:2px}
 .b{padding:7px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:inline-block}
-.bp{background:#3b82f6;color:#fff}.bp:hover{background:#2563eb}
-.bd{background:#ef4444;color:#fff}.bd:hover{background:#dc2626}
-.bs{background:#22c55e;color:#fff}.bs:hover{background:#16a34a}
+.bp{background:#1a73e8;color:#fff}.bp:hover{background:#1557b0}
+.bd{background:#d93025;color:#fff}.bd:hover{background:#b3261e}
+.bs{background:#1e8e3e;color:#fff}.bs:hover{background:#137333}
 .bsm{padding:5px 10px;font-size:11px}
 .bg{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
-hr{border:none;border-top:1px solid #334155;margin:12px 0}
+hr{border:none;border-top:1px solid #e0e0e0;margin:12px 0}
 .ch-table{width:100%%;border-collapse:collapse}
-.ch-table th{text-align:left;padding:8px 10px;font-size:11px;color:#64748b;border-bottom:1px solid #334155;font-weight:500}
-.ch-table td{padding:8px 10px;font-size:12px;border-bottom:1px solid #1e293b;vertical-align:middle}
-.ch-table tr:hover{background:#334155}
+.ch-table th{text-align:left;padding:8px 10px;font-size:11px;color:#666;border-bottom:2px solid #e0e0e0;font-weight:500}
+.ch-table td{padding:8px 10px;font-size:12px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
+.ch-table tr:hover{background:#f8f9fa}
 .ch-status{width:10px;height:10px;border-radius:50%%;display:inline-block}
-.ch-status.online{background:#22c55e;box-shadow:0 0 6px #22c55e}
-.ch-status.offline{background:#ef4444;box-shadow:0 0 6px #ef4444}
-.ch-status.unknown{background:#64748b}
+.ch-status.online{background:#1e8e3e}
+.ch-status.offline{background:#d93025}
+.ch-status.unknown{background:#bbb}
 .ch-name{font-weight:500;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ch-group{color:#64748b;font-size:11px}
-.ch-prog{color:#94a3b8;font-size:11px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-group{color:#888;font-size:11px}
+.ch-prog{color:#666;font-size:11px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .epg-table{width:100%%;border-collapse:collapse}
-.epg-table th{text-align:left;padding:8px 10px;font-size:11px;color:#64748b;border-bottom:1px solid #334155}
-.epg-table td{padding:8px 10px;font-size:12px;border-bottom:1px solid #1e293b}
-.epg-table tr:hover{background:#334155}
+.epg-table th{text-align:left;padding:8px 10px;font-size:11px;color:#666;border-bottom:2px solid #e0e0e0}
+.epg-table td{padding:8px 10px;font-size:12px;border-bottom:1px solid #f0f0f0}
+.epg-table tr:hover{background:#f8f9fa}
 .filter-bar{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
-.filter-bar select{padding:6px 10px;background:#0a0e1a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px}
-.filter-bar input{padding:6px 10px;background:#0a0e1a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px;flex:1;min-width:150px}
-.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100;align-items:center;justify-content:center}
+.filter-bar select{padding:6px 10px;background:#fafafa;border:1px solid #d0d0d0;border-radius:6px;color:#1a1a2e;font-size:12px}
+.filter-bar input{padding:6px 10px;background:#fafafa;border:1px solid #d0d0d0;border-radius:6px;color:#1a1a2e;font-size:12px;flex:1;min-width:150px}
+.filter-bar input:focus,.filter-bar select:focus{outline:none;border-color:#1a73e8}
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center}
 .modal.open{display:flex}
-.modal-box{background:#1e293b;border-radius:12px;padding:20px;border:1px solid #334155;max-width:500px;width:90%%}
-.modal-box h3{font-size:15px;margin-bottom:12px}
-.toast{position:fixed;top:12px;right:12px;padding:10px 14px;border-radius:6px;font-size:12px;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,.3)}
-.to{background:#064e3b;border:1px solid #10b981;color:#6ee7b7}
-.te{background:#7f1d1d;border:1px solid #ef4444;color:#fca5a5}
+.modal-box{background:#fff;border-radius:12px;padding:20px;border:1px solid #e0e0e0;max-width:640px;width:90%%;box-shadow:0 8px 32px rgba(0,0,0,.15)}
+.modal-box h3{font-size:15px;margin-bottom:12px;color:#1a1a2e}
+.toast{position:fixed;top:12px;right:12px;padding:10px 14px;border-radius:6px;font-size:12px;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.to{background:#e6f4ea;border:1px solid #1e8e3e;color:#137333}
+.te{background:#fce8e6;border:1px solid #d93025;color:#c5221f}
 .sg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.sc{background:#0a0e1a;border-radius:8px;padding:12px;border:1px solid #334155}
-.sc h3{font-size:12px;color:#f1f5f9;margin-bottom:8px}
-.sc select{width:100%%;padding:8px;background:#1e293b;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px}
-.si{margin-top:8px;font-size:10px;color:#64748b}
-.si span{color:#94a3b8}
-.empty{text-align:center;padding:20px;color:#64748b}
-.ft{text-align:center;padding:16px 0;color:#475569;font-size:10px}
+.sc{background:#fafafa;border-radius:8px;padding:12px;border:1px solid #e0e0e0}
+.sc h3{font-size:12px;color:#1a1a2e;margin-bottom:8px}
+.sc select{width:100%%;padding:8px;background:#fff;border:1px solid #d0d0d0;border-radius:6px;color:#1a1a2e;font-size:12px}
+.si{margin-top:8px;font-size:10px;color:#888}
+.si span{color:#555}
+.empty{text-align:center;padding:20px;color:#888}
+.ft{text-align:center;padding:16px 0;color:#aaa;font-size:10px}
+.banner{background:#e8f0fe;border:1px solid #1a73e8;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#1a73e8;display:flex;align-items:center;gap:8px}
+.banner .close{margin-left:auto;cursor:pointer;font-size:16px;font-weight:700;color:#1a73e8}
 @media(max-width:700px){.st{grid-template-columns:repeat(2,1fr)}.sg{grid-template-columns:1fr}.bg{flex-direction:column}}
 </style>
 </head>
@@ -482,11 +510,13 @@ $channels
 <div class="pn" id="p-playlist">
 <h2>Плейлист</h2>
 <div class="fg"><label>Ссылка на плейлист</label>
-<div style="display:flex;gap:6px">
 <input type="url" id="pl-url" placeholder="http://example.com/playlist.m3u" value="$purl">
+<div class="hint">Укажите URL плейлиста в формате M3U/M3U8</div>
+</div>
+<div class="bg">
 <button class="b bp bsm" onclick="setPlUrl()">Применить</button>
 <button class="b bs bsm" onclick="act('refresh_playlist','')">Обновить</button>
-</div></div>
+</div>
 <hr>
 <div class="fg"><label>Исходный M3U</label>
 <textarea id="pl-raw" readonly style="min-height:200px"></textarea></div>
@@ -494,11 +524,13 @@ $channels
 <div class="pn" id="p-epg">
 <h2>Телепрограмма (EPG)</h2>
 <div class="fg"><label>Ссылка на EPG (XMLTV)</label>
-<div style="display:flex;gap:6px">
 <input type="url" id="epg-url" placeholder="http://epg.example.com/epg.xml" value="$eurl">
+<div class="hint">Поддерживаются форматы XML и XML.GZ</div>
+</div>
+<div class="bg">
 <button class="b bp bsm" onclick="setEpgUrl()">Применить</button>
 <button class="b bs bsm" onclick="act('refresh_epg','')">Обновить</button>
-</div></div>
+</div>
 <hr>
 <h3>Передачи</h3>
 <div style="overflow-x:auto">
