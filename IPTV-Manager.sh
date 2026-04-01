@@ -107,7 +107,7 @@ generate_cgi() {
                     channels="${channels}<tr data-group=\"$group\" data-name=\"$name\" data-idx=\"$idx\" data-url=\"$url\"><td><span class=\"ch-st unknown\" id=\"st-$idx\"></span></td><td class=\"ch-n\">${li}${name}</td><td class=\"ch-g\">$group</td><td class=\"ch-p\" title=\"$prog\">$prog</td><td><button class=\"b bsm bp\" onclick=\"checkCh($idx,'$url')\">Пинг</button></td><td><button class=\"b bsm bo\" onclick=\"editCh($idx)\">Изм.</button></td></tr>
 "
                     idx=$((idx+1))
-                    [ "$idx" -ge 200 ] && break
+                    [ "$idx" -ge 1500 ] && break
                     name=""; url=""; group=""; tvgid=""; logo=""
                     ;;
             esac
@@ -245,7 +245,7 @@ CHROWS=""; IDX=0; NM=""; GR=""; TG=""; LG=""; UL=""
             LI=""; [ -n "$LG" ] && LI="<img src=\"$LG\" style=\"width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px\" onerror=\"this.style.display='none'\">"
             CHROWS="$CHROWS<tr data-group=\"$GR\" data-name=\"$NM\" data-idx=\"$IDX\" data-url=\"$UL\"><td><span class=\"ch-st unknown\" id=\"st-$IDX\"></span></td><td class=\"ch-n\">${LI}${NM}</td><td class=\"ch-g\">$GR</td><td class=\"ch-p\" title=\"$PR\">$PR</td><td><button class=\"b bsm bp\" onclick=\"checkCh($IDX,'$UL')\">Пинг</button></td><td><button class=\"b bsm bo\" onclick=\"editCh($IDX)\">Изм.</button></td></tr>
 "
-            IDX=$((IDX+1)); [ "$IDX" -ge 200 ] && break; NM=""; GR=""; TG=""; LG=""; UL="" ;;
+            IDX=$((IDX+1)); [ "$IDX" -ge 1000 ] && break; NM=""; GR=""; TG=""; LG=""; UL="" ;;
     esac
 done < "$PL"
 rm -f "$NOW_EPG"
@@ -318,6 +318,11 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 .banner{background:#e8f0fe;border:1px solid #1a73e8;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#1a73e8}
 .banner code{background:#fff;padding:2px 6px;border-radius:3px;font-size:11px}
 .ft{text-align:center;padding:16px 0;color:var(--text3);font-size:10px}
+.pg{padding:6px 12px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text);cursor:pointer;font-size:12px;transition:all .15s}
+.pg:hover{background:var(--hover-bg);border-color:var(--primary)}
+.pg.a{background:var(--primary);color:#fff;border-color:var(--primary)}
+.pg:disabled{opacity:.4;cursor:default}
+.pg-info{font-size:11px;color:var(--text3);margin:0 8px}
 @media(max-width:700px){.st{grid-template-columns:1fr 1fr}.sg{grid-template-columns:1fr}.h{flex-direction:column;gap:10px}.fb{flex-direction:column}}
 </style>
 </head>
@@ -330,7 +335,9 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="tb"><button class="t a" onclick="st('status',this)">Каналы</button><button class="t" onclick="st('playlist',this)">Плейлист</button><button class="t" onclick="st('epg',this)">Телепрограмма</button><button class="t" onclick="st('settings',this)">Настройки</button></div>
 <div class="pn a" id="p-status"><h2>Список каналов</h2>
 <div class="fb"><select id="f-g" onchange="filterCh()"><option value="">Все группы</option>$GOPTS</select><input type="text" id="f-s" placeholder="Поиск..." oninput="filterCh()"><button class="b bp bsm" onclick="checkAll()">Проверить все</button></div>
-<div style="overflow-x:auto"><table class="ch-t"><thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:80px">Пинг</th><th>Действия</th></tr></thead><tbody id="ch-tb">$CHROWS</tbody></table></div></div>
+<div style="overflow-x:auto"><table class="ch-t"><thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:80px">Пинг</th><th>Действия</th></tr></thead><tbody id="ch-tb">$CHROWS</tbody></table></div>
+<div id="pager" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
+</div>
 <div class="pn" id="p-playlist"><h2>Плейлист</h2>
 <div class="fg"><label>Ссылка на плейлист</label><input type="url" id="pl-u" placeholder="http://example.com/playlist.m3u" value="$PURL"><div class="hint">Вставьте ссылку на M3U/M3U8 плейлист</div></div>
 <div class="bg"><button class="b bp" onclick="setPlUrl()">Применить</button><button class="b bs" onclick="act('refresh_playlist','')">Обновить</button></div><hr>
@@ -360,7 +367,29 @@ function toast(m,t){var d=document.createElement('div');d.className='toast '+(t=
 function act(a,p){var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast(r.message,'ok');setTimeout(function(){location.reload()},1500)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.onerror=function(){toast('Ошибка сети','err')};x.send('action='+a+'&'+p)}
 function checkCh(i,u){var el=document.getElementById('st-'+i);el.className='ch-st unknown';var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);el.className=r.online?'ch-st online':'ch-st offline'}catch(e){el.className='ch-st offline'}};x.send('action=check_channel&url='+encodeURIComponent(u))}
 function checkAll(){document.querySelectorAll('#ch-tb tr').forEach(function(r){var i=r.getAttribute('data-idx'),u=r.getAttribute('data-url');if(u)checkCh(i,u)})}
-function filterCh(){var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();document.querySelectorAll('#ch-tb tr').forEach(function(r){var rg=r.getAttribute('data-group'),rn=r.getAttribute('data-name').toLowerCase();r.style.display=(!g||rg===g)&&(!s||rn.indexOf(s)>=0)?'':'none'})}
+var PS=150,CP=0,allRows=[];
+function getRows(){var r=[];document.querySelectorAll('#ch-tb tr').forEach(function(x){r.push(x)});return r}
+function renderPager(){
+    allRows=getRows();var total=allRows.length,pages=Math.ceil(total/PS);
+    var pg=document.getElementById('pager');
+    if(pages<=1){pg.innerHTML='';return}
+    var h='<button class="pg" onclick="goPage(CP-1)"'+(CP===0?' disabled':'')+'>‹</button>';
+    for(var i=0;i<pages;i++){
+        if(pages>15&&Math.abs(i-CP)>3&&i!==0&&i!==pages-1){if(i===1||i===pages-2)h+='<span class="pg-info">…</span>';continue}
+        h+='<button class="pg'+(i===CP?' a':'')+'" onclick="goPage('+i+')">'+(i+1)+'</button>'
+    }
+    h+='<button class="pg" onclick="goPage(CP+1)"'+(CP===pages-1?' disabled':'')+'>›</button>';
+    h+='<span class="pg-info">'+(CP*PS+1)+'–'+Math.min((CP+1)*PS,total)+' из '+total+'</span>';
+    pg.innerHTML=h
+}
+function goPage(n){var pages=Math.ceil(allRows.length/PS);if(n<0||n>=pages)return;CP=n;allRows.forEach(function(r,i){r.style.display=(i>=CP*PS&&i<(CP+1)*PS)?'':'none'});renderPager()}
+function filterCh(){
+    var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();
+    allRows=getRows();var vis=0;
+    allRows.forEach(function(r){var rg=r.getAttribute('data-group'),rn=r.getAttribute('data-name').toLowerCase();var show=(!g||rg===g)&&(!s||rn.indexOf(s)>=0);r.style.display=show?'':'none';if(show)vis++});
+    CP=0;renderPager()
+}
+(function(){allRows=getRows();goPage(0)})();
 function editCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');document.getElementById('e-n').value=r.getAttribute('data-name');document.getElementById('e-u').value=r.getAttribute('data-url');document.getElementById('e-g').value=r.getAttribute('data-group');document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)}
 function closeModal(){document.getElementById('em').classList.remove('open')}
 function saveEdit(){var i=document.getElementById('em').getAttribute('data-idx'),u=document.getElementById('e-u').value,g=document.getElementById('e-g').value,x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.send('action=update_channel&idx='+i+'&new_url='+encodeURIComponent(u)+'&new_group='+encodeURIComponent(g))}
