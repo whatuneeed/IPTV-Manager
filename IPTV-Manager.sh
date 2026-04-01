@@ -982,8 +982,12 @@ stop_scheduler() { kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/nu
 # HTTP-сервер
 # ==========================================
 start_http_server() {
+    mkdir -p /www/iptv/cgi-bin
+    cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u
+    [ -f "$EPG_FILE" ] && cp "$EPG_FILE" /www/iptv/epg.xml
+    generate_cgi
     if [ -f "$HTTPD_PID" ] && kill -0 $(cat "$HTTPD_PID") 2>/dev/null; then
-        echo_success "Сервер уже запущен: http://$LAN_IP:$IPTV_PORT/"
+        echo_success "Сервер обновлён: http://$LAN_IP:$IPTV_PORT/"
         return
     fi
     if [ ! -f "$PLAYLIST_FILE" ]; then
@@ -991,10 +995,6 @@ start_http_server() {
         PAUSE
         return 1
     fi
-    mkdir -p /www/iptv/cgi-bin
-    cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u
-    [ -f "$EPG_FILE" ] && cp "$EPG_FILE" /www/iptv/epg.xml
-    generate_cgi
     kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
     sleep 1
     uhttpd -f -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &
