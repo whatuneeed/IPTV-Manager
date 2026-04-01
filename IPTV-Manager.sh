@@ -77,81 +77,7 @@ generate_cgi() {
     # Генерация JSON каналов через awk
     mkdir -p /www/iptv
     if [ -f "$PLAYLIST_FILE" ]; then
-        awk '
-        BEGIN {
-            printf "["
-            first = 1
-            idx = 0
-        }
-        /#EXTINF:/ {
-            name = ""
-            grp = ""
-            logo = ""
-            tvgid = ""
-            n = $0
-            if (match(n, /,/)) {
-                name = substr(n, RSTART + 1)
-                gsub(/^[ \t]+/, "", name)
-                gsub(/[ \t]+$/, "", name)
-            }
-            if (match(n, /group-title="[^"]*"/)) {
-                grp = substr(n, RSTART + 12, RLENGTH - 13)
-            }
-            if (match(n, /tvg-id="[^"]*"/)) {
-                tvgid = substr(n, RSTART + 9, RLENGTH - 10)
-            }
-            if (match(n, /tvg-logo="[^"]*"/)) {
-                logo = substr(n, RSTART + 11, RLENGTH - 12)
-            }
-            if (name == "") name = "Неизвестный"
-            if (grp == "") grp = "Общее"
-            next
-        }
-        /^http/ {
-            url = $0
-            _out()
-        }
-        /^https/ {
-            url = $0
-            _out()
-        }
-        /^rtsp/ {
-            url = $0
-            _out()
-        }
-        /^rtmp/ {
-            url = $0
-            _out()
-        }
-        /^udp/ {
-            url = $0
-            _out()
-        }
-        /^rtp/ {
-            url = $0
-            _out()
-        }
-        function _out() {
-            gsub(/\\/, "\\\\", name)
-            gsub(/"/, "\\\"", name)
-            gsub(/\\/, "\\\\", grp)
-            gsub(/"/, "\\\"", grp)
-            gsub(/\\/, "\\\\", logo)
-            gsub(/"/, "\\\"", logo)
-            gsub(/\\/, "\\\\", tvgid)
-            gsub(/"/, "\\\"", tvgid)
-            gsub(/\\/, "\\\\", url)
-            gsub(/"/, "\\\"", url)
-            if (!first) printf ","
-            first = 0
-            printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\"}", name, grp, logo, tvgid, url
-            idx++
-            if (idx >= 5000) exit
-        }
-        END {
-            printf "]"
-        }
-        ' "$PLAYLIST_FILE" > /www/iptv/channels.json 2>/dev/null
+        awk 'BEGIN{printf "[";f=1;i=0}/#EXTINF:/{n=$0;nm="";g="";l="";t="";if(match(n/,/)){nm=substr(n,RSTART+1);gsub(/^[ \t]+/,"",nm);gsub(/[ \t]+$/,"",nm)};if(match(n,/group-title="[^"]*"/)){g=substr(n,RSTART+13,RLENGTH-14)};if(match(n,/tvg-id="[^"]*"/)){t=substr(n,RSTART+9,RLENGTH-10)};if(match(n,/tvg-logo="[^"]*"/)){l=substr(n,RSTART+11,RLENGTH-12)};if(nm=="")nm="Неизвестный";if(g=="")g="Общее";next}/^http/||/^https/||/^rtsp/||/^rtmp/||/^udp/||/^rtp/{u=$0;gsub(/\\/,"\\\\",nm);gsub(/"/,"\\\"",nm);gsub(/\\/,"\\\\",g);gsub(/"/,"\\\"",g);gsub(/\\/,"\\\\",l);gsub(/"/,"\\\"",l);gsub(/\\/,"\\\\",t);gsub(/"/,"\\\"",t);gsub(/\\/,"\\\\",u);gsub(/"/,"\\\"",u);if(!f)printf ",";f=0;printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\"}",nm,g,l,t,u;i++;if(i>=5000)exit}END{printf "]"}' "$PLAYLIST_FILE" > /www/iptv/channels.json 2>/dev/null
     else
         echo "[]" > /www/iptv/channels.json
     fi
@@ -264,7 +190,6 @@ if [ -n "$ACTION" ]; then
                     esac
                 done < "$PL"
                 cp "$TMP" "$PL"
-                mkdir -p /www/iptv
                 cp "$PL" /www/iptv/playlist.m3u
                 printf '{"status":"ok","message":"Канал обновлён"}'
             else
@@ -276,7 +201,6 @@ if [ -n "$ACTION" ]; then
                 url)
                     wget $(wget_opt) -O "$PL" "$PLAYLIST_URL" 2>/dev/null && [ -s "$PL" ] && {
                         CH=$(grep -c "^#EXTINF" "$PL")
-                        mkdir -p /www/iptv
                         cp "$PL" /www/iptv/playlist.m3u
                         printf '{"status":"ok","message":"Плейлист обновлён! Каналов: %s"}' "$CH"
                     } || printf '{"status":"error","message":"Ошибка загрузки"}' ;;
@@ -290,7 +214,6 @@ if [ -n "$ACTION" ]; then
                     [ "$M" = "1f8b" ] && { gunzip -f "$EF" 2>/dev/null; mv "${EF%.gz}" "$EF" 2>/dev/null; }
                     case "$EPG_URL" in *.gz) gunzip -f "$EF" 2>/dev/null; mv "${EF%.gz}" "$EF" 2>/dev/null ;; esac
                     SZ=$(wc -c < "$EF")
-                    mkdir -p /www/iptv
                     cp "$EF" /www/iptv/epg.xml
                     printf '{"status":"ok","message":"EPG обновлён! Размер: %s KB"}' "$((SZ / 1024))"
                 } || printf '{"status":"error","message":"Ошибка загрузки EPG"}'
@@ -304,7 +227,6 @@ if [ -n "$ACTION" ]; then
                 printf 'PLAYLIST_TYPE="url"\nPLAYLIST_URL="%s"\nPLAYLIST_SOURCE=""\n' "$NU" > "$EC"
                 wget $(wget_opt) -O "$PL" "$NU" 2>/dev/null && [ -s "$PL" ] && {
                     CH=$(grep -c "^#EXTINF" "$PL")
-                    mkdir -p /www/iptv
                     cp "$PL" /www/iptv/playlist.m3u
                     printf '{"status":"ok","message":"Плейлист загружен! Каналов: %s"}' "$CH"
                 } || printf '{"status":"error","message":"Ошибка загрузки"}'
@@ -321,7 +243,6 @@ if [ -n "$ACTION" ]; then
                     [ "$M" = "1f8b" ] && { gunzip -f "$EF" 2>/dev/null; mv "${EF%.gz}" "$EF" 2>/dev/null; }
                     case "$NU" in *.gz) gunzip -f "$EF" 2>/dev/null; mv "${EF%.gz}" "$EF" 2>/dev/null ;; esac
                     SZ=$(wc -c < "$EF")
-                    mkdir -p /www/iptv
                     cp "$EF" /www/iptv/epg.xml
                     printf '{"status":"ok","message":"EPG загружен! Размер: %s KB"}' "$((SZ / 1024))"
                 } || printf '{"status":"error","message":"Ошибка загрузки EPG"}'
@@ -396,39 +317,11 @@ EPG_NOTICE=""
 GROUPS=""
 [ -f "$PL" ] && GROUPS=$(grep -o 'group-title="[^"]*"' "$PL" | sed 's/group-title="//;s/"//' | sort -u)
 GOPTS=""
-echo "$GROUPS" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done > /tmp/iptv-go2.txt
-GOPTS=$(cat /tmp/iptv-go2.txt 2>/dev/null)
-rm -f /tmp/iptv-go2.txt
+GOPTS=$(echo "$GROUPS" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done)
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
 EPGROWS=""
 [ -f "$EF" ] && EPGROWS=$(awk '/<programme /{s=$0;if(match(s,/start="[0-9]+/)){st=substr(s,RSTART+7,RLENGTH-7);if(match(s,/channel="[^"]+"/)){ch=substr(s,RSTART+9,RLENGTH-9)}}}/<title/{t=$0;if(match(t,/<title[^>]*>[^<]*<\/title>/)){t=substr(t,RSTART,RLENGTH);gsub(/<[^>]*>/,"",t);ti=t}}/<\/programme>/{if(ti!=""&&ch!=""&&st!=""){printf "<tr><td>%s</td><td>%s</td><td>%s</td></tr>\n",substr(st,9,2)":"substr(st,11,2),ch,ti;c++;if(c>=30)exit}ti=""}' "$EF" 2>/dev/null)
-
-mkdir -p /www/iptv
-if [ -f "$PL" ]; then
-    awk '
-    BEGIN { printf "["; first=1; idx=0 }
-    /#EXTINF:/ {
-        name=""; grp=""; logo=""; tvgid=""; n=$0
-        if(match(n,/,/)){name=substr(n,RSTART+1);gsub(/^[ \t]+/,"",name);gsub(/[ \t]+$/,"",name)}
-            if(match(n,/group-title="[^"]*"/)){grp=substr(n,RSTART+13,RLENGTH-14)}
-            if(match(n,/tvg-id="[^"]*"/)){tvgid=substr(n,RSTART+9,RLENGTH-10)}
-            if(match(n,/tvg-logo="[^"]*"/)){logo=substr(n,RSTART+11,RLENGTH-12)}
-        if(name=="")name="Неизвестный"; if(grp=="")grp="Общее"; next
-    }
-    /^http/||/^https/||/^rtsp/||/^rtmp/||/^udp/||/^rtp/{
-        url=$0; gsub(/\\/,"\\\\",name); gsub(/"/,"\\\"",name); gsub(/\\/,"\\\\",grp); gsub(/"/,"\\\"",grp)
-        gsub(/\\/,"\\\\",logo); gsub(/"/,"\\\"",logo); gsub(/\\/,"\\\\",tvgid); gsub(/"/,"\\\"",tvgid)
-        gsub(/\\/,"\\\\",url); gsub(/"/,"\\\"",url)
-        if(!first)printf ","; first=0
-        printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\"}",name,grp,logo,tvgid,url
-        idx++; if(idx>=5000)exit
-    }
-    END { printf "]" }
-    ' "$PL" > /www/iptv/channels.json 2>/dev/null
-else
-    echo "[]" > /www/iptv/channels.json
-fi
 
 groups=""
 [ -f "$PL" ] && groups=$(grep -o 'group-title="[^"]*"' "$PL" | sed 's/group-title="//;s/"//' | sort -u)
@@ -1318,7 +1211,6 @@ while true; do
             esac
             NT=$(date '+%d.%m.%Y %H:%M')
             printf 'PLAYLIST_INTERVAL="%s"\nEPG_INTERVAL="%s"\nPLAYLIST_LAST_UPDATE="%s"\nEPG_LAST_UPDATE="%s"\n' "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$NT" "$EPG_LAST_UPDATE" > "$D/schedule.conf"
-            mkdir -p /www/iptv
             [ -f "$D/playlist.m3u" ] && cp "$D/playlist.m3u" /www/iptv/playlist.m3u
         }
     fi
@@ -1329,7 +1221,6 @@ while true; do
             [ -n "$EPG_URL" ] && wget -q --timeout=30 --no-check-certificate -O "$D/epg.xml" "$EPG_URL" 2>/dev/null && [ -s "$D/epg.xml" ] && {
                 NT=$(date '+%d.%m.%Y %H:%M')
                 printf 'PLAYLIST_INTERVAL="%s"\nEPG_INTERVAL="%s"\nPLAYLIST_LAST_UPDATE="%s"\nEPG_LAST_UPDATE="%s"\n' "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$NT" > "$D/schedule.conf"
-                mkdir -p /www/iptv
                 cp "$D/epg.xml" /www/iptv/epg.xml 2>/dev/null
             }
         }
