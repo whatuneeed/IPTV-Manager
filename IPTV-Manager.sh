@@ -55,14 +55,11 @@ wget_opt() { local o="-q --timeout=15"; wget --help 2>&1 | grep -q "no-check-cer
 # ==========================================
 generate_cgi() {
     load_config; load_epg; load_sched
-    local builtin_epg=$(detect_builtin_epg)
     local ch=$(get_ch)
     local psz=$(file_size "$PLAYLIST_FILE")
     local esz=$(file_size "$EPG_FILE")
     local purl=""; [ "$PLAYLIST_TYPE" = "url" ] && purl="$PLAYLIST_URL"
-    local eurl=""
-    if [ -n "$EPG_URL" ]; then eurl="$EPG_URL"
-    elif [ -n "$builtin_epg" ]; then eurl="$builtin_epg"; printf 'EPG_URL="%s"\n' "$builtin_epg" > "$EPG_CONFIG"; fi
+    local eurl=""; [ -n "$EPG_URL" ] && eurl="$EPG_URL"
     local pi="${PLAYLIST_INTERVAL:-0}"
     local ei="${EPG_INTERVAL:-0}"
     local plu="${PLAYLIST_LAST_UPDATE:----}"
@@ -197,8 +194,6 @@ if [ -n "$ACTION" ]; then
                 printf 'PLAYLIST_TYPE="url"\nPLAYLIST_URL="%s"\nPLAYLIST_SOURCE=""\n' "$NU" > "$EC"
                 wget $(wget_opt) -O "$PL" "$NU" 2>/dev/null && [ -s "$PL" ] && {
                     CH=$(grep -c "^#EXTINF" "$PL"); mkdir -p /www/iptv; cp "$PL" /www/iptv/playlist.m3u
-                    AE=$(head -5 "$PL" | grep -o 'url-tvg="[^"]*"' | head -1 | sed 's/url-tvg="//;s/"//')
-                    [ -n "$AE" ] && printf 'EPG_URL="%s"\n' "$AE" > "$EXC"
                     printf '{"status":"ok","message":"Плейлист загружен! Каналов: %s"}' "$CH"
                 } || printf '{"status":"error","message":"Ошибка загрузки"}'
             else printf '{"status":"error","message":"Укажите URL"}'; fi ;;
@@ -235,9 +230,7 @@ EURL=""; [ -n "$EPG_URL" ] && EURL="$EPG_URL"
 PI="${PLAYLIST_INTERVAL:-0}"; EI="${EPG_INTERVAL:-0}"
 PLU="${PLAYLIST_LAST_UPDATE:----}"; ELU="${EPG_LAST_UPDATE:----}"
 BUILTIN_EPG=$(head -5 "$PL" 2>/dev/null | grep -o 'url-tvg="[^"]*"' | head -1 | sed 's/url-tvg="//;s/"//')
-EPG_NOTICE=""
-[ -n "$BUILTIN_EPG" ] && EPG_NOTICE="<div class=\"banner\"><strong>Авто-EPG:</strong> В плейлисте найдена ссылка: <code>$BUILTIN_EPG</code></div>"
-[ -z "$EURL" ] && [ -n "$BUILTIN_EPG" ] && { printf 'EPG_URL="%s"\n' "$BUILTIN_EPG" > "$EXC"; EURL="$BUILTIN_EPG"; }
+EPG_NOTICE=""; [ -n "$BUILTIN_EPG" ] && [ -z "$EURL" ] && EPG_NOTICE="<div class=\"banner\">💡 В плейлисте найдена встроенная ссылка EPG: <code>$BUILTIN_EPG</code> — укажите её в поле выше для загрузки.</div>"
 GROUPS=""; [ -f "$PL" ] && GROUPS=$(grep -o 'group-title="[^"]*"' "$PL" | sed 's/group-title="//;s/"//' | sort -u)
 GOPTS=""; echo "$GROUPS" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done > /tmp/iptv-go2.txt
 GOPTS=$(cat /tmp/iptv-go2.txt 2>/dev/null); rm -f /tmp/iptv-go2.txt
@@ -498,16 +491,50 @@ do_update_playlist() {
 }
 setup_epg() {
     echo_color "Настройка EPG"; load_epg
-    [ -n "$EPG_URL" ] && echo_info "Текущий: $EPG_URL"
-    echo -ne "${YELLOW}EPG URL: ${NC}"; read EPG_URL </dev/tty
-    [ -z "$EPG_URL" ] && { echo_error "URL пуст!"; PAUSE; return 1; }
-    echo_info "Скачиваем..."
-    if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
-        local sz=$(file_size "$EPG_FILE"); echo_success "Загружен! Размер: $sz"
-        printf 'EPG_URL="%s"\n' "$EPG_URL" > "$EPG_CONFIG"
-        local now=$(get_ts); load_sched; save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$now"
-        start_http_server
-    else echo_error "Не удалось скачать!"; PAUSE; return 1; fi
+    [ -n "$EPG_URL" ] && echo_info "Текущий EPG: $EPG_URL"
+    # Проверяем встроенный EPG из плейлиста
+    local builtin=$(detect_builtin_epg)
+    if [ -n "$builtin" ]; then
+        echo -e "${CYAN}В плейлисте найден встроенный EPG:${NC} $builtin"
+        echo -e "${YELLOW}1) ${GREEN}Скачать встроенный EPG${NC}"
+        echo -e "${YELLOW}2) ${GREEN}Указать свою ссылку${NC}"
+        echo -e "${YELLOW}Enter) ${GREEN}Пропустить${NC}"
+        echo -ne "${YELLOW}> ${NC}"; read choice </dev/tty
+        case "$choice" in
+            1)
+                echo_info "Скачиваем $builtin ..."
+                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$builtin" 2>/dev/null && [ -s "$EPG_FILE" ]; then
+                    local sz=$(file_size "$EPG_FILE")
+                    echo_success "Загружен! Размер: $sz"
+                    printf 'EPG_URL="%s"\n' "$builtin" > "$EPG_CONFIG"
+                    local now=$(get_ts); load_sched; save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$now"
+                    start_http_server
+                else echo_error "Не удалось скачать!"; PAUSE; return 1; fi
+                ;;
+            2)
+                echo -ne "${YELLOW}EPG URL: ${NC}"; read EPG_URL </dev/tty
+                [ -z "$EPG_URL" ] && { echo_info "Отмена"; return 1; }
+                echo_info "Скачиваем..."
+                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
+                    local sz=$(file_size "$EPG_FILE"); echo_success "Загружен! Размер: $sz"
+                    printf 'EPG_URL="%s"\n' "$EPG_URL" > "$EPG_CONFIG"
+                    local now=$(get_ts); load_sched; save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$now"
+                    start_http_server
+                else echo_error "Не удалось скачать!"; PAUSE; return 1; fi
+                ;;
+            *) echo_info "Пропущено"; return 1 ;;
+        esac
+    else
+        echo -ne "${YELLOW}EPG URL: ${NC}"; read EPG_URL </dev/tty
+        [ -z "$EPG_URL" ] && { echo_info "Отмена"; return 1; }
+        echo_info "Скачиваем..."
+        if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
+            local sz=$(file_size "$EPG_FILE"); echo_success "Загружен! Размер: $sz"
+            printf 'EPG_URL="%s"\n' "$EPG_URL" > "$EPG_CONFIG"
+            local now=$(get_ts); load_sched; save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$now"
+            start_http_server
+        else echo_error "Не удалось скачать!"; PAUSE; return 1; fi
+    fi
 }
 do_update_epg() {
     load_epg; [ -z "$EPG_URL" ] && { echo_error "EPG не настроен!"; return 1; }
