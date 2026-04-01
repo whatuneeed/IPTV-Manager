@@ -403,6 +403,32 @@ LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 EPGROWS=""
 [ -f "$EF" ] && EPGROWS=$(awk '/<programme /{s=$0;if(match(s,/start="[0-9]+/)){st=substr(s,RSTART+7,RLENGTH-7);if(match(s,/channel="[^"]+"/)){ch=substr(s,RSTART+9,RLENGTH-9)}}}/<title/{t=$0;if(match(t,/<title[^>]*>[^<]*<\/title>/)){t=substr(t,RSTART,RLENGTH);gsub(/<[^>]*>/,"",t);ti=t}}/<\/programme>/{if(ti!=""&&ch!=""&&st!=""){printf "<tr><td>%s</td><td>%s</td><td>%s</td></tr>\n",substr(st,9,2)":"substr(st,11,2),ch,ti;c++;if(c>=30)exit}ti=""}' "$EF" 2>/dev/null)
 
+mkdir -p /www/iptv
+if [ -f "$PL" ]; then
+    awk '
+    BEGIN { printf "["; first=1; idx=0 }
+    /#EXTINF:/ {
+        name=""; grp=""; logo=""; tvgid=""; n=$0
+        if(match(n,/,/)){name=substr(n,RSTART+1);gsub(/^[ \t]+/,"",name);gsub(/[ \t]+$/,"",name)}
+        if(match(n,/group-title="[^"]*"/)){grp=substr(n,RSTART+12,RLENGTH-13)}
+        if(match(n,/tvg-id="[^"]*"/)){tvgid=substr(n,RSTART+9,RLENGTH-10)}
+        if(match(n,/tvg-logo="[^"]*"/)){logo=substr(n,RSTART+11,RLENGTH-12)}
+        if(name=="")name="Неизвестный"; if(grp=="")grp="Общее"; next
+    }
+    /^http/||/^https/||/^rtsp/||/^rtmp/||/^udp/||/^rtp/{
+        url=$0; gsub(/\\/,"\\\\",name); gsub(/"/,"\\\"",name); gsub(/\\/,"\\\\",grp); gsub(/"/,"\\\"",grp)
+        gsub(/\\/,"\\\\",logo); gsub(/"/,"\\\"",logo); gsub(/\\/,"\\\\",tvgid); gsub(/"/,"\\\"",tvgid)
+        gsub(/\\/,"\\\\",url); gsub(/"/,"\\\"",url)
+        if(!first)printf ","; first=0
+        printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\"}",name,grp,logo,tvgid,url
+        idx++; if(idx>=5000)exit
+    }
+    END { printf "]" }
+    ' "$PL" > /www/iptv/channels.json 2>/dev/null
+else
+    echo "[]" > /www/iptv/channels.json
+fi
+
 groups=""
 [ -f "$PL" ] && groups=$(grep -o 'group-title="[^"]*"' "$PL" | sed 's/group-title="//;s/"//' | sort -u)
 grp_count=$(echo "$groups" | grep -c . 2>/dev/null || echo 0)
