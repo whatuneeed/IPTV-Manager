@@ -86,32 +86,33 @@ generate_cgi() {
 
     local channels="" group_opts=""
     if [ -f "$PLAYLIST_FILE" ]; then
-        local idx=0 name="" url="" group="" tvgid="" logo=""
-        while IFS= read -r line; do
-            case "$line" in
-                "#EXTINF:"*)
-                    name=$(echo "$line" | sed 's/.*,\(.*\)/\1/' | sed 's/ *$//')
-                    group=$(echo "$line" | grep -o 'group-title="[^"]*"' | sed 's/group-title="//;s/"//')
-                    tvgid=$(echo "$line" | grep -o 'tvg-id="[^"]*"' | sed 's/tvg-id="//;s/"//')
-                    logo=$(echo "$line" | grep -o 'tvg-logo="[^"]*"' | sed 's/tvg-logo="//;s/"//')
-                    [ -z "$name" ] && name="Unknown"
-                    [ -z "$group" ] && group="Общее"
-                    ;;
-                http*|https*|rtsp*|rtmp*|udp*|rtp*)
-                    url="$line"
-                    local prog="—"
-                    [ -n "$tvgid" ] && [ -s "$now_epg" ] && prog=$(grep "^${tvgid}	" "$now_epg" | head -1 | cut -f2)
-                    [ -z "$prog" ] && prog="—"
-                    local li=""
-                    [ -n "$logo" ] && li="<img src=\"$logo\" style=\"width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px\" onerror=\"this.style.display='none'\">"
-                    channels="${channels}<tr data-group=\"$group\" data-name=\"$name\" data-idx=\"$idx\" data-url=\"$url\"><td><span class=\"ch-st unknown\" id=\"st-$idx\"></span></td><td class=\"ch-n\">${li}${name}</td><td class=\"ch-g\">$group</td><td class=\"ch-p\" title=\"$prog\">$prog</td><td><button class=\"b bsm bp\" onclick=\"checkCh($idx,'$url')\">Пинг</button></td><td><button class=\"b bsm bo\" onclick=\"editCh($idx)\">Изм.</button></td></tr>
-"
-                    idx=$((idx+1))
-                    [ "$idx" -ge 1500 ] && break
-                    name=""; url=""; group=""; tvgid=""; logo=""
-                    ;;
-            esac
-        done < "$PLAYLIST_FILE"
+        # Generate channels.json via awk (reliable for any size)
+        mkdir -p /www/iptv
+        awk '
+            /#EXTINF:/ {
+                name=""; group=""; tvgid=""; logo=""
+                n=$0
+                if(match(n,/,/)) name=substr(n,RSTART+1)
+                gsub(/^ +| +$/,"",name)
+                if(match(n,/group-title="[^"]*"/)) { group=substr(n,RSTART+12,RLENGTH-13) }
+                if(match(n,/tvg-id="[^"]*"/)) { tvgid=substr(n,RSTART+9,RLENGTH-10) }
+                if(match(n,/tvg-logo="[^"]*"/)) { logo=substr(n,RSTART+11,RLENGTH-12) }
+                if(name=="") name="Unknown"
+                if(group=="") group="Общее"
+            }
+            /^http|^https|^rtsp|^rtmp|^udp|^rtp/ {
+                url=$0
+                gsub(/\\/,"\\\\",name); gsub(/"/,"\\\"",name)
+                gsub(/\\/,"\\\\",group); gsub(/"/,"\\\"",group)
+                gsub(/\\/,"\\\\",url); gsub(/"/,"\\\"",url)
+                gsub(/\\/,"\\\\",logo); gsub(/"/,"\\\"",logo)
+                gsub(/\\/,"\\\\",tvgid); gsub(/"/,"\\\"",tvgid)
+                if(NR>1) printf ","
+                printf "{\"i\":%d,\"n\":\"%s\",\"g\":\"%s\",\"u\":\"%s\",\"t\":\"%s\",\"l\":\"%s\"}", idx++, name, group, url, tvgid, logo
+                if(idx>=5000) exit
+            }
+        ' "$PLAYLIST_FILE" > /www/iptv/channels.json 2>/dev/null
+
         echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done > /tmp/iptv-go.txt
         group_opts=$(cat /tmp/iptv-go.txt 2>/dev/null)
         rm -f /tmp/iptv-go.txt
@@ -335,8 +336,9 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="tb"><button class="t a" onclick="st('status',this)">Каналы</button><button class="t" onclick="st('playlist',this)">Плейлист</button><button class="t" onclick="st('epg',this)">Телепрограмма</button><button class="t" onclick="st('settings',this)">Настройки</button></div>
 <div class="pn a" id="p-status"><h2>Список каналов</h2>
 <div class="fb"><select id="f-g" onchange="filterCh()"><option value="">Все группы</option>$GOPTS</select><input type="text" id="f-s" placeholder="Поиск..." oninput="filterCh()"><button class="b bp bsm" onclick="checkAll()">Проверить все</button></div>
-<div style="overflow-x:auto"><table class="ch-t"><thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:80px">Пинг</th><th>Действия</th></tr></thead><tbody id="ch-tb">$CHROWS</tbody></table></div>
-<div id="pager" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
+<div id="ch-loading" style="text-align:center;padding:40px;color:var(--text3)">Загрузка каналов...</div>
+<div style="overflow-x:auto;display:none" id="ch-wrap"><table class="ch-t"><thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:80px">Пинг</th><th>Действия</th></tr></thead><tbody id="ch-tb"></tbody></table></div>
+<div id="pager" style="display:none;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
 </div>
 <div class="pn" id="p-playlist"><h2>Плейлист</h2>
 <div class="fg"><label>Ссылка на плейлист</label><input type="url" id="pl-u" placeholder="http://example.com/playlist.m3u" value="$PURL"><div class="hint">Вставьте ссылку на M3U/M3U8 плейлист</div></div>
@@ -366,13 +368,27 @@ function cp(b){var c=b.previousElementSibling,r=document.createRange();r.selectN
 function toast(m,t){var d=document.createElement('div');d.className='toast '+(t==='ok'?'to':'te');d.textContent=m;document.body.appendChild(d);setTimeout(function(){d.remove()},4000)}
 function act(a,p){var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast(r.message,'ok');setTimeout(function(){location.reload()},1500)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.onerror=function(){toast('Ошибка сети','err')};x.send('action='+a+'&'+p)}
 function checkCh(i,u){var el=document.getElementById('st-'+i);el.className='ch-st unknown';var x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);el.className=r.online?'ch-st online':'ch-st offline'}catch(e){el.className='ch-st offline'}};x.send('action=check_channel&url='+encodeURIComponent(u))}
-function checkAll(){document.querySelectorAll('#ch-tb tr').forEach(function(r){var i=r.getAttribute('data-idx'),u=r.getAttribute('data-url');if(u)checkCh(i,u)})}
-var PS=150,CP=0,allRows=[];
-function getRows(){var r=[];document.querySelectorAll('#ch-tb tr').forEach(function(x){r.push(x)});return r}
+function checkAll(){var vis=getVisible();vis.forEach(function(r){var i=r.getAttribute('data-idx'),u=r.getAttribute('data-url');if(u)checkCh(i,u)})}
+var PS=150,CP=0,allRows=[],allCh=[];
+function esc(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function renderRows(chs){
+    var tb=document.getElementById('ch-tb'),h='';
+    chs.forEach(function(c){
+        var li=c.l?'<img src="'+esc(c.l)+'" style="width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px" onerror="this.style.display=\'none\'">':'';
+        h+='<tr data-group="'+esc(c.g)+'" data-name="'+esc(c.n)+'" data-idx="'+c.i+'" data-url="'+esc(c.u)+'"><td><span class="ch-st unknown" id="st-'+c.i+'"></span></td><td class="ch-n">'+li+esc(c.n)+'</td><td class="ch-g">'+esc(c.g)+'</td><td class="ch-p">—</td><td><button class="b bsm bp" onclick="checkCh('+c.i+',\''+esc(c.u).replace(/'/g,"\\'")+'\')">Пинг</button></td><td><button class="b bsm bo" onclick="editCh('+c.i+')">Изм.</button></td></tr>'
+    });
+    tb.innerHTML=h;
+    allRows=[];tb.querySelectorAll('tr').forEach(function(r){allRows.push(r)});
+    document.getElementById('ch-loading').style.display='none';
+    document.getElementById('ch-wrap').style.display='block';
+    document.getElementById('pager').style.display='flex';
+    goPage(0)
+}
+function getVisible(){var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();return allRows.filter(function(r){var rg=r.getAttribute('data-group'),rn=r.getAttribute('data-name').toLowerCase();return(!g||rg===g)&&(!s||rn.indexOf(s)>=0)})}
 function renderPager(){
-    allRows=getRows();var total=allRows.length,pages=Math.ceil(total/PS);
+    var vis=getVisible(),total=vis.length,pages=Math.ceil(total/PS);
     var pg=document.getElementById('pager');
-    if(pages<=1){pg.innerHTML='';return}
+    if(pages<=1){pg.innerHTML='<span class="pg-info">'+total+' каналов</span>';return}
     var h='<button class="pg" onclick="goPage(CP-1)"'+(CP===0?' disabled':'')+'>‹</button>';
     for(var i=0;i<pages;i++){
         if(pages>15&&Math.abs(i-CP)>3&&i!==0&&i!==pages-1){if(i===1||i===pages-2)h+='<span class="pg-info">…</span>';continue}
@@ -382,14 +398,35 @@ function renderPager(){
     h+='<span class="pg-info">'+(CP*PS+1)+'–'+Math.min((CP+1)*PS,total)+' из '+total+'</span>';
     pg.innerHTML=h
 }
-function goPage(n){var pages=Math.ceil(allRows.length/PS);if(n<0||n>=pages)return;CP=n;allRows.forEach(function(r,i){r.style.display=(i>=CP*PS&&i<(CP+1)*PS)?'':'none'});renderPager()}
-function filterCh(){
-    var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();
-    allRows=getRows();var vis=0;
-    allRows.forEach(function(r){var rg=r.getAttribute('data-group'),rn=r.getAttribute('data-name').toLowerCase();var show=(!g||rg===g)&&(!s||rn.indexOf(s)>=0);r.style.display=show?'':'none';if(show)vis++});
-    CP=0;renderPager()
+function goPage(n){
+    var vis=getVisible(),pages=Math.ceil(vis.length/PS);
+    if(n<0||n>=pages)return;CP=n;
+    allRows.forEach(function(r){r.style.display='none'});
+    vis.forEach(function(r,i){if(i>=CP*PS&&i<(CP+1)*PS)r.style.display=''})
+    renderPager()
 }
-(function(){allRows=getRows();goPage(0)})();
+function filterCh(){CP=0;goPage(0)}
+function editCh(i){
+    var c=allCh.find(function(x){return x.i===i});if(!c)return;
+    document.getElementById('e-n').value=c.n;document.getElementById('e-u').value=c.u;document.getElementById('e-g').value=c.g;
+    document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)
+}
+function closeModal(){document.getElementById('em').classList.remove('open')}
+function saveEdit(){var i=document.getElementById('em').getAttribute('data-idx'),u=document.getElementById('e-u').value,g=document.getElementById('e-g').value,x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.send('action=update_channel&idx='+i+'&new_url='+encodeURIComponent(u)+'&new_group='+encodeURIComponent(g))}
+function setPlUrl(){var u=document.getElementById('pl-u').value;if(!u){toast('Введите ссылку','err');return}act('set_playlist_url','url='+encodeURIComponent(u))}
+function setEpgUrl(){var u=document.getElementById('epg-u').value;if(!u){toast('Введите ссылку','err');return}act('set_epg_url','url='+encodeURIComponent(u))}
+function saveSched(){var p=document.getElementById('s-pl').value,e=document.getElementById('s-epg').value;act('set_schedule','playlist_interval='+p+'&epg_interval='+e)}
+function loadRaw(){var x=new XMLHttpRequest();x.open('GET','/playlist.m3u',true);x.onload=function(){document.getElementById('pl-r').value=x.responseText};x.send()}
+// Load channels from JSON
+(function(){
+    var x=new XMLHttpRequest();x.open('GET','/channels.json',true);
+    x.onload=function(){
+        try{allCh=JSON.parse(x.responseText);renderRows(allCh)}
+        catch(e){document.getElementById('ch-loading').innerHTML='Ошибка загрузки каналов'}
+    };
+    x.onerror=function(){document.getElementById('ch-loading').innerHTML='Ошибка сети'};
+    x.send()
+})();
 function editCh(i){var r=document.querySelector('#ch-tb tr[data-idx="'+i+'"]');document.getElementById('e-n').value=r.getAttribute('data-name');document.getElementById('e-u').value=r.getAttribute('data-url');document.getElementById('e-g').value=r.getAttribute('data-group');document.getElementById('em').classList.add('open');document.getElementById('em').setAttribute('data-idx',i)}
 function closeModal(){document.getElementById('em').classList.remove('open')}
 function saveEdit(){var i=document.getElementById('em').getAttribute('data-idx'),u=document.getElementById('e-u').value,g=document.getElementById('e-g').value,x=new XMLHttpRequest();x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}else toast(r.message,'err')}catch(e){toast('Ошибка','err')}};x.send('action=update_channel&idx='+i+'&new_url='+encodeURIComponent(u)+'&new_group='+encodeURIComponent(g))}
