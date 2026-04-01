@@ -365,10 +365,10 @@ fi
 
 hdr
 CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null || echo 0)
-PSZ=0; [ -f "$PL" ] && PSZ=$(cat "$PL" | wc -c)
-ESZ=0; [ -f "$EF" ] && ESZ=$(cat "$EF" | wc -c)
-PSZ="$((PSZ/1024)) KB"
-ESZ="$((ESZ/1024)) KB"
+PSZ="---"
+ESZ="---"
+if [ -f "$PL" ]; then PSZ=$(cat "$PL" | wc -c); PSZ="$((PSZ/1024)) KB"; fi
+if [ -f "$EF" ]; then ESZ=$(cat "$EF" | wc -c); ESZ="$((ESZ/1024)) KB"; fi
 PURL=""
 EURL=""
 PI="0"
