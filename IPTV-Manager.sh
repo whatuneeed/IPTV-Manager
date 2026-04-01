@@ -365,8 +365,8 @@ fi
 
 hdr
 CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null || echo 0)
-PSZ=$(file_size "$PL")
-ESZ=$(file_size "$EF")
+PSZ=$(wc -c < "$PL" 2>/dev/null); PSZ="$((PSZ/1024)) KB"
+ESZ=$(wc -c < "$EF" 2>/dev/null); [ -n "$ESZ" ] && ESZ="$((ESZ/1024)) KB" || ESZ="0 B"
 PURL=""
 EURL=""
 PI="0"
