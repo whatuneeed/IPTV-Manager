@@ -410,9 +410,9 @@ if [ -f "$PL" ]; then
     /#EXTINF:/ {
         name=""; grp=""; logo=""; tvgid=""; n=$0
         if(match(n,/,/)){name=substr(n,RSTART+1);gsub(/^[ \t]+/,"",name);gsub(/[ \t]+$/,"",name)}
-        if(match(n,/group-title="[^"]*"/)){grp=substr(n,RSTART+12,RLENGTH-13)}
-        if(match(n,/tvg-id="[^"]*"/)){tvgid=substr(n,RSTART+9,RLENGTH-10)}
-        if(match(n,/tvg-logo="[^"]*"/)){logo=substr(n,RSTART+11,RLENGTH-12)}
+            if(match(n,/group-title="[^"]*"/)){grp=substr(n,RSTART+13,RLENGTH-14)}
+            if(match(n,/tvg-id="[^"]*"/)){tvgid=substr(n,RSTART+9,RLENGTH-10)}
+            if(match(n,/tvg-logo="[^"]*"/)){logo=substr(n,RSTART+11,RLENGTH-12)}
         if(name=="")name="Неизвестный"; if(grp=="")grp="Общее"; next
     }
     /^http/||/^https/||/^rtsp/||/^rtmp/||/^udp/||/^rtp/{
