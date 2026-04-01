@@ -231,17 +231,35 @@ if [ -n "$ACTION" ]; then
             URL=$(echo "$URL" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
             case "$URL" in
                 http*|https*)
-                    wget -q --timeout=5 --tries=1 --spider --header="User-Agent: VLC/3.0" --header="Icy-MetaData: 1" "$URL" 2>/dev/null
-                    if [ $? -eq 0 ]; then
-                        printf '{"status":"ok","online":true}'
-                    else
-                        wget -q --timeout=5 --tries=1 -O /dev/null --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
-                        if [ $? -eq 0 ] || [ $? -eq 8 ]; then
-                            printf '{"status":"ok","online":true}'
-                        else
-                            printf '{"status":"ok","online":false}'
-                        fi
-                    fi ;;
+                    case "$URL" in
+                        *.m3u8*|*.m3u*)
+                            TF="/tmp/iptv-chk-$$"
+                            wget -q --timeout=5 --tries=1 -O "$TF" --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
+                            if [ -s "$TF" ]; then
+                                SEG=$(grep -v "^#" "$TF" | grep -i "http" | head -1)
+                                if [ -z "$SEG" ]; then
+                                    BASE=$(echo "$URL" | sed 's|/[^/]*$||')
+                                    SEG=$(grep -v "^#" "$TF" | grep -v "^$" | head -1)
+                                    case "$SEG" in
+                                        http*) ;;
+                                        /*) SEG="http$(echo "$URL" | sed -n 's|^\(http[s]*\)://.*|\1|p')://$(echo "$URL" | sed -n 's|^http[s]*://\([^/]*\).*|\1|p')$SEG" ;;
+                                        *) SEG="$BASE/$SEG" ;;
+                                    esac
+                                fi
+                                if [ -n "$SEG" ]; then
+                                    wget -q --timeout=5 --tries=1 -O /dev/null --header="User-Agent: VLC/3.0" "$SEG" 2>/dev/null
+                                    [ $? -le 1 ] && printf '{"status":"ok","online":true}' || printf '{"status":"ok","online":false}'
+                                else
+                                    printf '{"status":"ok","online":true}'
+                                fi
+                            else
+                                printf '{"status":"ok","online":false}'
+                            fi
+                            rm -f "$TF" ;;
+                        *)
+                            wget -q --timeout=6 --tries=1 -O /dev/null --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
+                            [ $? -le 1 ] && printf '{"status":"ok","online":true}' || printf '{"status":"ok","online":false}' ;;
+                    esac ;;
                 udp*|rtp*) printf '{"status":"ok","online":true}' ;;
                 *) printf '{"status":"ok","online":false}' ;;
             esac ;;
