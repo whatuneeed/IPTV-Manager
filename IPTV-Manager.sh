@@ -231,7 +231,17 @@ if [ -n "$ACTION" ]; then
             URL=$(echo "$URL" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
             case "$URL" in
                 http*|https*)
-                    wget --spider --timeout=4 --tries=1 --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null && printf '{"status":"ok","online":true}' || printf '{"status":"ok","online":false}' ;;
+                    wget -q --timeout=5 --tries=1 --spider --header="User-Agent: VLC/3.0" --header="Icy-MetaData: 1" "$URL" 2>/dev/null
+                    if [ $? -eq 0 ]; then
+                        printf '{"status":"ok","online":true}'
+                    else
+                        wget -q --timeout=5 --tries=1 -O /dev/null --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
+                        if [ $? -eq 0 ] || [ $? -eq 8 ]; then
+                            printf '{"status":"ok","online":true}'
+                        else
+                            printf '{"status":"ok","online":false}'
+                        fi
+                    fi ;;
                 udp*|rtp*) printf '{"status":"ok","online":true}' ;;
                 *) printf '{"status":"ok","online":false}' ;;
             esac ;;
