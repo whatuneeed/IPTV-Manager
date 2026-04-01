@@ -201,11 +201,13 @@ generate_cgi() {
     # --- CGI файл (без раскрытия переменных) ---
     cat > /www/iptv/cgi-bin/admin.cgi << 'CGIEOF'
 #!/bin/sh
+IPTV_MANAGER_VERSION="3.6"
 PL="/etc/iptv/playlist.m3u"
 EC="/etc/iptv/iptv.conf"
 EF="/etc/iptv/epg.xml"
 EXC="/etc/iptv/epg.conf"
 SC="/etc/iptv/schedule.conf"
+wget_opt() { local o="-q --timeout=15"; wget --help 2>&1 | grep -q "no-check-certificate" && o="$o --no-check-certificate"; echo "$o"; }
 hdr() { printf 'Content-Type: text/html; charset=utf-8\r\n\r\n'; }
 json_hdr() { printf 'Content-Type: application/json\r\n\r\n'; }
 METHOD="${REQUEST_METHOD:-GET}"
@@ -397,6 +399,17 @@ LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
 EPGROWS=""
 [ -f "$EF" ] && EPGROWS=$(awk '/<programme /{s=$0;if(match(s,/start="[0-9]+/)){st=substr(s,RSTART+7,RLENGTH-7);if(match(s,/channel="[^"]+"/)){ch=substr(s,RSTART+9,RLENGTH-9)}}}/<title/{t=$0;if(match(t,/<title[^>]*>[^<]*<\/title>/)){t=substr(t,RSTART,RLENGTH);gsub(/<[^>]*>/,"",t);ti=t}}/<\/programme>/{if(ti!=""&&ch!=""&&st!=""){printf "<tr><td>%s</td><td>%s</td><td>%s</td></tr>\n",substr(st,9,2)":"substr(st,11,2),ch,ti;c++;if(c>=30)exit}ti=""}' "$EF" 2>/dev/null)
+
+groups=""
+[ -f "$PL" ] && groups=$(grep -o 'group-title="[^"]*"' "$PL" | sed 's/group-title="//;s/"//' | sort -u)
+grp_count=$(echo "$groups" | grep -c . 2>/dev/null || echo 0)
+hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null || echo 0)
+sd_count=$((CH - hd_count))
+
+group_opts=""
+if [ -n "$groups" ]; then
+    group_opts=$(echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done)
+fi
 
 cat << HTMLEND
 <!DOCTYPE html>
