@@ -10,9 +10,9 @@
 body{background:#0f172a;color:#e2e8f0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100vh;overflow:hidden}
 #app{display:flex;height:100vh}
 #main{flex:1;display:flex;flex-direction:column;min-width:0}
-#top-bar{display:flex;align-items:center;gap:8px;padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155}
-#top-bar input{flex:1;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px}
-#top-bar button{padding:8px 16px;background:#3b82f6;border:none;border-radius:6px;color:#fff;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap}
+#top-bar{display:flex;align-items:center;gap:8px;padding:10px 16px;background:#1e293b;border-bottom:1px solid #334155;flex-wrap:wrap}
+#top-bar input{flex:1;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:13px;min-width:150px}
+#top-bar button{padding:8px 14px;background:#3b82f6;border:none;border-radius:6px;color:#fff;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap}
 #top-bar button:hover{background:#2563eb}
 #top-bar .ch-name{font-size:14px;font-weight:600;color:#94a3b8;margin-right:8px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #video-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative}
@@ -41,6 +41,13 @@ video{width:100%;height:100%;background:#000}
 .ch-group{font-size:11px;color:#64748b}
 #loading{padding:40px;text-align:center;color:#64748b}
 #no-channels{padding:40px;text-align:center;color:#64748b;font-size:14px}
+#playlist-bar{padding:8px 12px;border-bottom:1px solid #334155}
+#playlist-bar input{width:100%;padding:8px 12px;background:#0f172a;border:1px solid #334155;border-radius:6px;color:#e2e8f0;font-size:12px;margin-bottom:6px}
+#playlist-bar button{width:100%;padding:6px;background:#22c55e;border:none;border-radius:6px;color:#fff;font-weight:600;cursor:pointer;font-size:12px}
+#playlist-bar button:hover{background:#16a34a}
+#mode-tabs{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid #334155}
+#mode-tabs button{flex:1;padding:6px;background:#334155;border:none;border-radius:6px;color:#94a3b8;cursor:pointer;font-size:11px;font-weight:600}
+#mode-tabs button.active{background:#3b82f6;color:#fff}
 @media(max-width:768px){
     #sidebar{position:fixed;right:-320px;top:0;bottom:0;z-index:100;transition:right .3s}
     #sidebar.open{right:0}
@@ -56,8 +63,8 @@ video{width:100%;height:100%;background:#000}
 <div id="top-bar">
 <button id="toggle-sidebar" onclick="toggleSidebar()">☰</button>
 <span class="ch-name" id="current-ch"></span>
-<input type="text" id="url-input" placeholder="Ссылка на поток...">
-<button onclick="playInput()">▶</button>
+<input type="text" id="url-input" placeholder="Ссылка на поток или плейлист...">
+<button onclick="handleInput()">▶</button>
 </div>
 <div id="video-wrap">
 <video id="video" controls autoplay></video>
@@ -73,11 +80,19 @@ video{width:100%;height:100%;background:#000}
 <span class="count" id="ch-count"></span>
 <button id="close-sidebar" onclick="toggleSidebar()">✕</button>
 </div>
+<div id="mode-tabs">
+<button class="active" onclick="switchMode('channels',this)">Каналы</button>
+<button onclick="switchMode('playlist',this)">Плейлист</button>
+</div>
 <div id="search-box">
 <input type="text" id="search" placeholder="Поиск каналов..." oninput="filterChannels()">
 </div>
 <div id="group-filter">
 <select id="group-sel" onchange="filterChannels()"><option value="">Все группы</option></select>
+</div>
+<div id="playlist-bar" style="display:none">
+<input type="text" id="pl-url" placeholder="URL M3U/M3U8 плейлиста...">
+<button onclick="loadPlaylist()">Загрузить плейлист</button>
 </div>
 <div id="ch-list">
 <div id="loading">Загрузка каналов...</div>
@@ -94,6 +109,7 @@ var hls=null;
 var channels=[];
 var filtered=[];
 var currentIdx=-1;
+var mode='channels';
 
 function playUrl(url,idx){
     if(!url)return;
@@ -135,7 +151,17 @@ function playUrl(url,idx){
     }
 }
 
-function playInput(){playUrl(urlInput.value.trim())}
+function handleInput(){
+    var u=urlInput.value.trim();
+    if(!u)return;
+    if(u.indexOf('.m3u')>=0||u.indexOf('.m3u8')>=0){
+        loadPlaylistFromUrl(u);
+    }else{
+        playUrl(u);
+    }
+}
+
+function playInput(){handleInput()}
 
 function getFilteredIdx(realIdx){
     for(var i=0;i<filtered.length;i++){if(filtered[i]._r===realIdx)return i}
@@ -184,6 +210,88 @@ function toggleSidebar(){
     document.getElementById('sidebar').classList.toggle('open');
 }
 
+function switchMode(m,btn){
+    mode=m;
+    document.querySelectorAll('#mode-tabs button').forEach(function(b){b.classList.remove('active')});
+    btn.classList.add('active');
+    document.getElementById('search-box').style.display=m==='channels'?'':'none';
+    document.getElementById('group-filter').style.display=m==='channels'?'':'none';
+    document.getElementById('playlist-bar').style.display=m==='playlist'?'':'none';
+    if(m==='channels'){
+        filterChannels();
+    }
+}
+
+function parseM3U(text){
+    var lines=text.split('\n');
+    var result=[];
+    var name='',group='',logo='',tvgid='',url='';
+    for(var i=0;i<lines.length;i++){
+        var line=lines[i].replace(/^\s+|\s+$/g,'');
+        if(line.indexOf('#EXTINF:')===0){
+            name='';group='';logo='';tvgid='';
+            var ci=line.indexOf(',');
+            if(ci>=0)name=line.substring(ci+1).replace(/^\s+/,'').replace(/\s+$/,'');
+            var gm=line.match(/group-title="([^"]*)"/);
+            if(gm)group=gm[1];
+            var lm=line.match(/tvg-logo="([^"]*)"/);
+            if(lm)logo=lm[1];
+            var tm=line.match(/tvg-id="([^"]*)"/);
+            if(tm)tvgid=tm[1];
+            if(!name)name='Неизвестный';
+            if(!group)group='Общее';
+        }else if(line.indexOf('http')===0||line.indexOf('rtsp')===0||line.indexOf('rtmp')===0||line.indexOf('udp')===0||line.indexOf('rtp')===0){
+            url=line;
+            result.push({n:name,g:group,l:logo,i:tvgid,u:url});
+            name='';group='';logo='';tvgid='';url='';
+        }
+    }
+    return result;
+}
+
+function loadPlaylistFromUrl(url){
+    document.getElementById('ch-list').innerHTML='<div id="loading">Загрузка плейлиста...</div>';
+    var x=new XMLHttpRequest();
+    x.open('GET',url,true);
+    x.onload=function(){
+        try{
+            channels=parseM3U(x.responseText);
+            populateGroups();
+            filterChannels();
+            document.getElementById('pl-url').value=url;
+            switchMode('channels',document.querySelectorAll('#mode-tabs button')[0]);
+        }catch(e){
+            document.getElementById('ch-list').innerHTML='<div id="no-channels">Ошибка парсинга плейлиста</div>';
+        }
+    };
+    x.onerror=function(){
+        document.getElementById('ch-list').innerHTML='<div id="no-channels">Не удалось загрузить плейлист</div>';
+    };
+    x.send();
+}
+
+function loadPlaylist(){
+    var u=document.getElementById('pl-url').value.trim();
+    if(!u){alert('Введите URL плейлиста');return}
+    loadPlaylistFromUrl(u);
+}
+
+function populateGroups(){
+    var groups={};
+    for(var i=0;i<channels.length;i++){
+        var g=channels[i].g;
+        if(g&&!groups[g])groups[g]=true;
+    }
+    var sel=document.getElementById('group-sel');
+    sel.innerHTML='<option value="">Все группы</option>';
+    var keys=Object.keys(groups).sort();
+    for(var j=0;j<keys.length;j++){
+        var opt=document.createElement('option');
+        opt.value=keys[j];opt.textContent=keys[j];
+        sel.appendChild(opt);
+    }
+}
+
 function loadChannels(){
     var x=new XMLHttpRequest();
     var url=window.location.origin+'/channels.json';
@@ -191,18 +299,7 @@ function loadChannels(){
     x.onload=function(){
         try{
             channels=JSON.parse(x.responseText);
-            var groups={};
-            for(var i=0;i<channels.length;i++){
-                var g=channels[i].g;
-                if(g&&!groups[g])groups[g]=true;
-            }
-            var sel=document.getElementById('group-sel');
-            var keys=Object.keys(groups).sort();
-            for(var j=0;j<keys.length;j++){
-                var opt=document.createElement('option');
-                opt.value=keys[j];opt.textContent=keys[j];
-                sel.appendChild(opt);
-            }
+            populateGroups();
             filterChannels();
         }catch(e){
             document.getElementById('ch-list').innerHTML='<div id="no-channels">Ошибка загрузки каналов</div>';
@@ -217,10 +314,15 @@ function loadChannels(){
 var params=new URLSearchParams(window.location.search);
 var streamUrl=params.get('url');
 var startIdx=params.get('idx');
-if(streamUrl){
+var plUrl=params.get('pl');
+if(plUrl){
+    loadPlaylistFromUrl(plUrl);
+}else if(streamUrl){
     playUrl(streamUrl,startIdx!==null?parseInt(startIdx):-1);
+    loadChannels();
+}else{
+    loadChannels();
 }
-loadChannels();
 
 document.addEventListener('keydown',function(e){
     if(e.target.tagName==='INPUT')return;
@@ -240,7 +342,7 @@ document.addEventListener('keydown',function(e){
     if(e.key===' '){e.preventDefault();video.paused?video.play():video.pause()}
 });
 
-urlInput.addEventListener('keydown',function(e){if(e.key==='Enter'){playInput()}});
+urlInput.addEventListener('keydown',function(e){if(e.key==='Enter'){handleInput()}});
 </script>
 </body>
 </html>
