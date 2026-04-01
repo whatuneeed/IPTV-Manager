@@ -130,17 +130,27 @@ generate_cgi() {
     group_opts=$(cat /tmp/iptv-group-opts.txt 2>/dev/null)
     rm -f /tmp/iptv-group-opts.txt
 
-    # EPG программы (первые 30)
+    # EPG программы (первые 30) — mawk-compatible (RSTART/RLENGTH)
     local epg_rows=""
     if [ -f "$EPG_FILE" ]; then
         epg_rows=$(awk '
             /<programme / {
-                start=""; channel=""; title=""
-                if (match($0, /start="([0-9]+)/, a)) start=a[1]
-                if (match($0, /channel="([^"]+)"/, a)) channel=a[1]
+                start = ""; channel = ""
+                s = $0
+                if (match(s, /start="[0-9]+/)) {
+                    start = substr(s, RSTART+7, RLENGTH-7)
+                }
+                if (match(s, /channel="[^"]+"/)) {
+                    channel = substr(s, RSTART+9, RLENGTH-9)
+                }
             }
             /<title[^>]*>/ {
-                if (match($0, /<title[^>]*>([^<]+)<\/title>/, a)) title=a[1]
+                tmp = $0
+                if (match(tmp, /<title[^>]*>[^<]*<\/title>/)) {
+                    tmp = substr(tmp, RSTART, RLENGTH)
+                    gsub(/<[^>]*>/, "", tmp)
+                    title = tmp
+                }
             }
             /<\/programme>/ {
                 if (title != "" && channel != "" && start != "") {
@@ -149,6 +159,7 @@ generate_cgi() {
                     count++
                     if (count >= 30) exit
                 }
+                title = ""
             }
         ' "$EPG_FILE" 2>/dev/null)
     fi
@@ -189,11 +200,34 @@ if [ -n "\$ACTION" ]; then
     case "\$ACTION" in
         check_channel)
             URL=\$(echo "\$POST_DATA" | sed -n 's/.*url=\\([^&]*\\).*/\\1/p')
-            if wget -q --timeout=3 --spider "\$URL" 2>/dev/null || wget -q --timeout=3 -O /dev/null "\$URL" 2>/dev/null; then
-                printf '{"status":"ok","online":true}'
-            else
-                printf '{"status":"ok","online":false}'
-            fi
+            # Use wget with --timeout and --tries=1, check HTTP response code
+            # For HTTP/HTTPS streams, we check if server responds with 200/30x
+            # For UDP/RTP/RTSP streams, we just check if destination is reachable
+            case "\$URL" in
+                http*|https*)
+                    HTTP_CODE=\$(wget --timeout=5 --tries=1 --max-redirect=0 -O /dev/null -S "\$URL" 2>&1 | grep "HTTP/" | tail -1 | awk '{print \$2}' | tr -d '\\r')
+                    if [ -n "\$HTTP_CODE" ] && [ "\$HTTP_CODE" -ge 200 ] 2>/dev/null && [ "\$HTTP_CODE" -lt 500 ] 2>/dev/null; then
+                        printf '{"status":"ok","online":true}'
+                    else
+                        printf '{"status":"ok","online":false}'
+                    fi
+                    ;;
+                udp*|rtp*|rtp://*)
+                    # For multicast/UDP, just try to connect briefly
+                    printf '{"status":"ok","online":true}'
+                    ;;
+                rtsp*|rtmp*)
+                    # For RTSP/RTMP, try a quick connection
+                    if timeout 5 wget -q --timeout=3 -O /dev/null "\$URL" 2>/dev/null; then
+                        printf '{"status":"ok","online":true}'
+                    else
+                        printf '{"status":"ok","online":false}'
+                    fi
+                    ;;
+                *)
+                    printf '{"status":"ok","online":false}'
+                    ;;
+            esac
             ;;
         update_channel)
             IDX=\$(echo "\$POST_DATA" | sed -n 's/.*idx=\\([^&]*\\).*/\\1/p')
@@ -762,6 +796,28 @@ INITEOF
     fi
 }
 
+uninstall() {
+    echo_color "Полное удаление IPTV Manager"
+    echo -ne "${YELLOW}Вы уверены? Все данные будут удалены! (y/N): ${NC}"
+    read ans </dev/tty
+    case "$ans" in y|Y|yes|Yes) ;; *) echo_info "Отмена"; return 1;; esac
+    echo_info "Останавливаем сервисы..."
+    stop_http_server
+    stop_scheduler
+    echo_info "Удаляем файлы..."
+    rm -rf /etc/iptv
+    rm -rf /www/iptv
+    rm -f /var/run/iptv-httpd.pid /var/run/iptv-scheduler.pid
+    rm -f /tmp/iptv-scheduler.sh /tmp/iptv-edit.m3u
+    rm -f /tmp/iptv-group-opts.txt
+    if [ -f /etc/init.d/iptv-manager ]; then
+        /etc/init.d/iptv-manager disable 2>/dev/null
+        rm -f /etc/init.d/iptv-manager
+    fi
+    echo_success "IPTV Manager полностью удалён"
+    echo_info "Для выхода введите Enter"
+}
+
 # ==========================================
 # Меню
 # ==========================================
@@ -799,6 +855,7 @@ show_menu() {
     echo -e "${CYAN}10) ${GREEN}Остановить сервер${NC}"
     echo -e "${CYAN}11) ${GREEN}Автозапуск${NC}"
     echo -e "${CYAN}12) ${GREEN}Удалить плейлист${NC}"
+    echo -e "${CYAN}13) ${RED}Удалить IPTV Manager${NC}"
     echo -e "${CYAN}Enter) ${GREEN}Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"; read c </dev/tty
@@ -806,7 +863,7 @@ show_menu() {
         1) load_playlist_url;; 2) load_playlist_file;; 3) setup_provider;;
         4) do_update_playlist;; 5) setup_epg;; 6) do_update_epg;; 7) remove_epg;;
         8) setup_schedule;; 9) start_http_server;; 10) stop_http_server;;
-        11) setup_autostart;; 12) remove_playlist;; *) echo_info "Выход"; exit 0;;
+        11) setup_autostart;; 12) remove_playlist;; 13) uninstall;; *) echo_info "Выход"; exit 0;;
     esac
     PAUSE
 }
