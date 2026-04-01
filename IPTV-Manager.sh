@@ -92,12 +92,12 @@ generate_cgi() {
         # Generate JS array of channel URLs
         awk '
             /#EXTINF:/ { idx++ }
-            /^http/ || /^https/ || /^rtsp/ || /^rtmp/ || /^udp/ || /^rtp/ {
-                url=$0
-                gsub(/\\/, "\\\\", url); gsub(/"/, "\\\"", url); gsub(/'/, "\\'", url)
-                printf "CH_URL[%d]=\"%s\";\n", idx-1, url
-                if(idx>=1500) exit
-            }
+            /^http/ { gsub(/\\/, "\\\\", $0); gsub(/"/, "\\\"", $0); printf "CH_URL[%d]=\"%s\";\n", idx-1, $0 }
+            /^https/ { gsub(/\\/, "\\\\", $0); gsub(/"/, "\\\"", $0); printf "CH_URL[%d]=\"%s\";\n", idx-1, $0 }
+            /^rtsp/ { gsub(/\\/, "\\\\", $0); gsub(/"/, "\\\"", $0); printf "CH_URL[%d]=\"%s\";\n", idx-1, $0 }
+            /^rtmp/ { gsub(/\\/, "\\\\", $0); gsub(/"/, "\\\"", $0); printf "CH_URL[%d]=\"%s\";\n", idx-1, $0 }
+            /^udp/ { gsub(/\\/, "\\\\", $0); gsub(/"/, "\\\"", $0); printf "CH_URL[%d]=\"%s\";\n", idx-1, $0 }
+            /^rtp/ { gsub(/\\/, "\\\\", $0); gsub(/"/, "\\\"", $0); printf "CH_URL[%d]=\"%s\";\n", idx-1, $0 }
         ' "$PLAYLIST_FILE" > /www/iptv/ch_urls.js 2>/dev/null
 
         # Generate player page
@@ -166,11 +166,26 @@ BEGIN {
     if(match(n,/tvg-logo="[^"]*"/)) { logo=substr(n,RSTART+11,RLENGTH-12) }
     if(name=="") name="Unknown"
     if(grp=="") grp="General"
-    # HTML-escape
     gsub(/&/, "\\&amp;", name); gsub(/</, "\\&lt;", name); gsub(/>/, "\\&gt;", name); gsub(/"/, "\\&quot;", name)
     gsub(/&/, "\\&amp;", grp); gsub(/</, "\\&lt;", grp); gsub(/>/, "\\&gt;", grp); gsub(/"/, "\\&quot;", grp)
     gsub(/&/, "\\&amp;", logo); gsub(/</, "\\&lt;", logo); gsub(/>/, "\\&gt;", logo); gsub(/"/, "\\&quot;", logo)
     gsub(/&/, "\\&amp;", tvgid); gsub(/</, "\\&lt;", tvgid); gsub(/>/, "\\&gt;", tvgid); gsub(/"/, "\\&quot;", tvgid)
+}
+/^http/ { url=$0; gsub(/&/, "\\&amp;", url); gsub(/</, "\\&lt;", url); gsub(/>/, "\\&gt;", url); gsub(/"/, "\\&quot;", url); _render() }
+/^https/ { url=$0; gsub(/&/, "\\&amp;", url); gsub(/</, "\\&lt;", url); gsub(/>/, "\\&gt;", url); gsub(/"/, "\\&quot;", url); _render() }
+/^rtsp/ { url=$0; gsub(/&/, "\\&amp;", url); gsub(/</, "\\&lt;", url); gsub(/>/, "\\&gt;", url); gsub(/"/, "\\&quot;", url); _render() }
+/^rtmp/ { url=$0; gsub(/&/, "\\&amp;", url); gsub(/</, "\\&lt;", url); gsub(/>/, "\\&gt;", url); gsub(/"/, "\\&quot;", url); _render() }
+/^udp/ { url=$0; gsub(/&/, "\\&amp;", url); gsub(/</, "\\&lt;", url); gsub(/>/, "\\&gt;", url); gsub(/"/, "\\&quot;", url); _render() }
+/^rtp/ { url=$0; gsub(/&/, "\\&amp;", url); gsub(/</, "\\&lt;", url); gsub(/>/, "\\&gt;", url); gsub(/"/, "\\&quot;", url); _render() }
+function _render() {
+    li=""
+    if(logo!="") li="<img src=\""logo"\" style=\"width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px\" onerror=\"this.style.display='none'\">"
+    prog="—"
+    if(tvgid!="" && tvgid in epg) prog=epg[tvgid]
+    gsub(/&/, "\\&amp;", prog); gsub(/</, "\\&lt;", prog); gsub(/>/, "\\&gt;", prog); gsub(/"/, "\\&quot;", prog)
+    printf "<tr data-group=\"%s\" data-name=\"%s\" data-idx=\"%d\"><td><span class=\"ch-st unknown\" id=\"st-%d\"></span></td><td class=\"ch-n\">%s%s</td><td class=\"ch-g\">%s</td><td class=\"ch-p\">%s</td><td><button class=\"b bsm bp\" onclick=\"checkCh(%d,CH_URL[%d])\">Пинг</button></td><td><button class=\"b bsm bs\" onclick=\"watchCh(%d)\">▶</button></td><td><button class=\"b bsm bo\" onclick=\"editCh(%d)\">Изм.</button></td></tr>\n", grp, name, idx, idx, li, name, grp, prog, idx, idx, idx, idx
+    idx++
+    if(idx>=1500) exit
 }
 /^http/ || /^https/ || /^rtsp/ || /^rtmp/ || /^udp/ || /^rtp/ {
     url=$0
