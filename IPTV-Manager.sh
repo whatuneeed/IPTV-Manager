@@ -1,9 +1,9 @@
 #!/bin/sh
 # ==========================================
-# IPTV Manager для OpenWrt v3.6
+# IPTV Manager для OpenWrt v3.7
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.6"
+IPTV_MANAGER_VERSION="3.7"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -15,12 +15,14 @@ PROVIDER_CONFIG="$IPTV_DIR/provider.conf"
 EPG_FILE="$IPTV_DIR/epg.xml"
 EPG_CONFIG="$IPTV_DIR/epg.conf"
 SCHEDULE_FILE="$IPTV_DIR/schedule.conf"
+FAVORITES_FILE="$IPTV_DIR/favorites.json"
 HTTPD_PID="/var/run/iptv-httpd.pid"
 
 mkdir -p "$IPTV_DIR"
 [ -f "$CONFIG_FILE" ] || touch "$CONFIG_FILE"
 [ -f "$EPG_CONFIG" ] || touch "$EPG_CONFIG"
 [ -f "$SCHEDULE_FILE" ] || touch "$SCHEDULE_FILE"
+[ -f "$FAVORITES_FILE" ] || echo "[]" > "$FAVORITES_FILE"
 
 echo_color() { echo -e "${MAGENTA}$1${NC}"; }
 echo_success() { echo -e "${GREEN}$1${NC}"; }
@@ -77,7 +79,7 @@ generate_cgi() {
     # Генерация JSON каналов через awk
     mkdir -p /www/iptv
     if [ -f "$PLAYLIST_FILE" ]; then
-        awk 'BEGIN{printf "[";f=1}/#EXTINF:/{nm="";g="";l="";t="";i=index($0,",");if(i>0){nm=substr($0,i+1);sub(/^[ \t]+/,"",nm)};if(nm=="")nm="Неизвестный";p=index($0,"group-title=\"");if(p>0){s=substr($0,p+13);e=index(s,"\"");g=substr(s,1,e-1)};if(g=="")g="Общее";p=index($0,"tvg-logo=\"");if(p>0){s=substr($0,p+10);e=index(s,"\"");l=substr(s,1,e-1)};p=index($0,"tvg-id=\"");if(p>0){s=substr($0,p+8);e=index(s,"\"");t=substr(s,1,e-1)};next}/^http/{if(!f)printf ",";f=0;gsub(/"/,"\\\"",$0);gsub(/"/,"\\\"",nm);gsub(/"/,"\\\"",g);gsub(/"/,"\\\"",l);gsub(/"/,"\\\"",t);printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\"}",nm,g,l,t,$0}END{printf "]"}' "$PLAYLIST_FILE" > /www/iptv/channels.json 2>/dev/null
+        awk 'BEGIN{printf "[";f=1;i=0}/#EXTINF:/{nm="";g="";l="";t="";ii=index($0,",");if(ii>0){nm=substr($0,ii+1);sub(/^[ \t]+/,"",nm)};if(nm=="")nm="Неизвестный";p=index($0,"group-title=\"");if(p>0){s=substr($0,p+13);e=index(s,"\"");g=substr(s,1,e-1)};if(g=="")g="Общее";p=index($0,"tvg-logo=\"");if(p>0){s=substr($0,p+10);e=index(s,"\"");l=substr(s,1,e-1)};p=index($0,"tvg-id=\"");if(p>0){s=substr($0,p+8);e=index(s,"\"");t=substr(s,1,e-1)};next}/^http/{if(!f)printf ",";f=0;gsub(/"/,"\\\"",$0);gsub(/"/,"\\\"",nm);gsub(/"/,"\\\"",g);gsub(/"/,"\\\"",l);gsub(/"/,"\\\"",t);printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\",\"idx\":%d}",nm,g,l,t,$0,i;i++}END{printf "]"}' "$PLAYLIST_FILE" > /www/iptv/channels.json 2>/dev/null
     else
         echo "[]" > /www/iptv/channels.json
     fi
@@ -130,12 +132,13 @@ generate_cgi() {
     # --- CGI файл (без раскрытия переменных) ---
     cat > /www/iptv/cgi-bin/admin.cgi << 'CGIEOF'
 #!/bin/sh
-IPTV_MANAGER_VERSION="3.6"
+IPTV_MANAGER_VERSION="3.7"
 PL="/etc/iptv/playlist.m3u"
 EC="/etc/iptv/iptv.conf"
 EF="/etc/iptv/epg.xml"
 EXC="/etc/iptv/epg.conf"
 SC="/etc/iptv/schedule.conf"
+FAV="/etc/iptv/favorites.json"
 wget_opt() { local o="-q --timeout=15"; wget --help 2>&1 | grep -q "no-check-certificate" && o="$o --no-check-certificate"; echo "$o"; }
 hdr() { printf 'Content-Type: text/html; charset=utf-8\r\n\r\n'; }
 json_hdr() { printf 'Content-Type: application/json\r\n\r\n'; }
@@ -285,6 +288,24 @@ if [ -n "$ACTION" ]; then
             else
                 printf '{"status":"error","message":"Нет данных"}'
             fi ;;
+        toggle_favorite)
+            IDX=$(echo "$POST_DATA" | sed -n 's/.*idx=\([^&]*\).*/\1/p')
+            [ -f "$FAV" ] || echo "[]" > "$FAV"
+            if grep -q "\"$IDX\"" "$FAV" 2>/dev/null; then
+                awk -v idx="$IDX" 'BEGIN{RS=",";ORS=""} {gsub(/\[/,"");gsub(/\]/,"");gsub(/"/,"");if($0!=idx)print (NR>1?",":"")$0}' "$FAV" > /tmp/fav_tmp.json
+                printf '[%s]' "$(cat /tmp/fav_tmp.json)" > "$FAV"
+                printf '{"status":"ok","message":"Удалено из избранного","fav":false}'
+            else
+                if [ "$(cat "$FAV")" = "[]" ]; then
+                    printf '["%s"]' "$IDX" > "$FAV"
+                else
+                    sed -i "s/\]/,\"$IDX\"\]/" "$FAV"
+                fi
+                printf '{"status":"ok","message":"Добавлено в избранное","fav":true}'
+            fi ;;
+        get_favorites)
+            [ -f "$FAV" ] || echo "[]" > "$FAV"
+            printf '{"status":"ok","favorites":%s}' "$(cat "$FAV")" ;;
         *) printf '{"status":"error","message":"Неизвестное действие"}' ;;
     esac
     exit 0
@@ -409,6 +430,8 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 .pg:disabled{opacity:.4;cursor:default}
 .pg-info{font-size:11px;color:var(--text3);margin:0 8px}
 .loading{text-align:center;padding:40px;color:var(--text3)}
+.fav-btn{background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px;color:var(--text3);transition:color .15s}
+.fav-btn:hover{color:#f59e0b}
 @media(max-width:700px){.st{grid-template-columns:1fr 1fr}.sg{grid-template-columns:1fr}.h{flex-direction:column;gap:10px}.fb{flex-direction:column}}
 </style>
 </head>
@@ -436,13 +459,14 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="fb">
 <select id="f-g" onchange="filterCh()"><option value="">Все группы</option>$group_opts</select>
 <input type="text" id="f-s" placeholder="Поиск..." oninput="filterCh()">
+<button class="b bsm bo" id="fav-btn" onclick="toggleFavFilter()">☆ Избранное</button>
 <button class="b bp bsm" onclick="checkAll()">Проверить все</button>
 <button class="b bs bsm" onclick="watchAll()">▶ Смотреть всё</button>
 </div>
 <div style="overflow-x:auto">
 <table class="ch-t">
-<thead><tr><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:70px">Пинг</th><th style="width:40px"></th><th>Действия</th></tr></thead>
-<tbody id="ch-tb"><tr><td colspan="7" class="loading">Загрузка каналов...</td></tbody>
+<thead><tr><th style="width:30px">★</th><th style="width:20px"></th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:70px">Пинг</th><th style="width:40px"></th><th>Действия</th></tr></thead>
+<tbody id="ch-tb"><tr><td colspan="8" class="loading">Загрузка каналов...</td></tbody>
 </table>
 </div>
 <div id="pager" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
@@ -532,7 +556,9 @@ $epg_notice
 var API='/cgi-bin/admin.cgi';
 var channels=[];
 var epgMap={};
+var favorites=[];
 var PS=150,CP=0,filteredRows=[];
+var showFavOnly=false;
 
 function toggleTheme(){
     var d=document.documentElement,t=d.getAttribute('data-theme')==='dark'?'light':'dark';
@@ -691,7 +717,7 @@ function doImport(){
 function renderRows(){
     var tb=document.getElementById('ch-tb');
     if(!filteredRows.length){
-        tb.innerHTML='<tr><td colspan="7" class="loading">Нет каналов</td></tr>';
+        tb.innerHTML='<tr><td colspan="8" class="loading">Нет каналов</td></tr>';
         document.getElementById('pager').innerHTML='';
         return;
     }
@@ -711,7 +737,9 @@ function renderRows(){
         }
         var prog='—';
         if(ch.i && epgMap[ch.i])prog=escHtml(epgMap[ch.i]);
+        var isFav=favorites.indexOf(realIdx)>=0;
         html+='<tr>';
+        html+='<td><button class="fav-btn" data-idx="'+realIdx+'" onclick="toggleFav('+realIdx+')" title="'+(isFav?'Удалить из избранного':'Добавить в избранное')+'">'+(isFav?'★':'☆')+'</button></td>';
         html+='<td><span class="ch-st unknown" id="st-'+realIdx+'"></span></td>';
         html+='<td class="ch-n">'+logoHtml+escHtml(ch.n)+'</td>';
         html+='<td class="ch-g">'+escHtml(ch.g)+'</td>';
@@ -758,10 +786,54 @@ function filterCh(){
     for(var i=0;i<channels.length;i++){
         var ch=channels[i];
         var show=(!g||ch.g===g)&&(!s||ch.n.toLowerCase().indexOf(s)>=0);
+        if(showFavOnly&&favorites.indexOf(i)<0)show=false;
         if(show){ch._idx=i;filteredRows.push(ch)}
     }
     CP=0;
     renderRows();
+}
+
+function toggleFavFilter(){
+    showFavOnly=!showFavOnly;
+    var btn=document.getElementById('fav-btn');
+    btn.innerHTML=showFavOnly?'★ Избранное':'☆ Избранное';
+    btn.className=showFavOnly?'b bsm bs':'b bsm bo';
+    filterCh();
+}
+
+function toggleFav(idx){
+    var x=new XMLHttpRequest();
+    x.open('POST',API,true);
+    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'){
+                if(r.fav){
+                    if(favorites.indexOf(idx)<0)favorites.push(idx);
+                }else{
+                    var fi=favorites.indexOf(idx);
+                    if(fi>=0)favorites.splice(fi,1);
+                }
+                filterCh();
+            }
+        }catch(e){}
+    };
+    x.send('action=toggle_favorite&idx='+idx);
+}
+
+function loadFavorites(){
+    var x=new XMLHttpRequest();
+    x.open('GET',API+'?action=get_favorites',true);
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'&&r.favorites){
+                favorites=r.favorites;
+            }
+        }catch(e){}
+    };
+    x.send();
 }
 
 function escHtml(s){
@@ -821,6 +893,7 @@ function loadEpgMap(){
 
 loadEpgMap();
 loadChannels();
+loadFavorites();
 </script>
 </body>
 </html>
@@ -868,6 +941,9 @@ video{max-width:100%;max-height:100%;background:#000;display:block}
 #sb-tabs{display:flex;gap:4px;padding:6px 12px;border-bottom:1px solid var(--border)}
 #sb-tabs button{flex:1;padding:5px;background:var(--hover);border:none;border-radius:5px;color:var(--text3);cursor:pointer;font-size:11px;font-weight:600;transition:all .15s}
 #sb-tabs button.on{background:var(--accent);color:#fff}
+.fav-star{color:#64748b;font-size:14px;cursor:pointer;flex-shrink:0;transition:color .15s}
+.fav-star.on{color:#f59e0b}
+.fav-star:hover{color:#fbbf24}
 #sb-search{padding:6px 12px;border-bottom:1px solid var(--border)}
 #sb-search input{width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px}
 #sb-search input:focus{outline:none;border-color:var(--accent)}
@@ -905,6 +981,7 @@ video{max-width:100%;max-height:100%;background:#000;display:block}
 <span class="now" id="now-ch"></span>
 <input type="text" id="url-in" placeholder="Поток или URL плейлиста...">
 <button class="btn-play" onclick="handleUrl()">▶</button>
+<button class="btn-icon" onclick="togglePip()" title="Картинка в картинке">⧉</button>
 <button class="btn-icon" onclick="toggleFs()" title="Полный экран">⛶</button>
 </div>
 <div id="video-wrap">
@@ -926,6 +1003,7 @@ video{max-width:100%;max-height:100%;background:#000;display:block}
 </div>
 <div id="sb-tabs">
 <button class="on" onclick="tab('ch',this)">Каналы</button>
+<button onclick="tab('fav',this)">★ Избранное</button>
 <button onclick="tab('pl',this)">Плейлист</button>
 </div>
 <div id="sb-search">
@@ -951,7 +1029,7 @@ var epgOv=document.getElementById('epg-overlay');
 var epgNow=document.getElementById('epg-now');
 var epgNext=document.getElementById('epg-next');
 var chList=document.getElementById('ch-list');
-var hls=null,channels=[],filtered=[],curIdx=-1,epgData={},curMode='ch';
+var hls=null,channels=[],filtered=[],curIdx=-1,epgData={},curMode='ch',favorites=[];
 
 function play(url,idx){
     if(!url)return;
@@ -1018,7 +1096,9 @@ function render(){
         var ch=filtered[i];
         var lh=ch.l?'<img src="'+esc(ch.l)+'" onerror="this.parentElement.innerHTML=\'📺\'">':'<span class="ph">📺</span>';
         var now=ch.i&&epgData[ch.i]?'<div class="ch-now">📡 '+esc(epgData[ch.i])+'</div>':'';
+        var isFav=favorites.indexOf(ch._r)>=0;
         h+='<div class="ch'+(ch._r===curIdx?' on':'')+'" onclick="play(\''+esc(ch.u).replace(/'/g,"\\'")+'\','+ch._r+')">';
+        h+='<span class="fav-star'+(isFav?' on':'')+'" onclick="event.stopPropagation();toggleFav('+ch._r+')">'+(isFav?'★':'☆')+'</span>';
         h+='<div class="ch-logo">'+lh+'</div>';
         h+='<div class="ch-info"><div class="ch-name">'+esc(ch.n)+'</div>';
         h+='<div class="ch-meta">'+esc(ch.g)+'</div>'+now+'</div></div>';
@@ -1032,7 +1112,10 @@ function filter(){
     filtered=[];
     for(var i=0;i<channels.length;i++){
         var ch=channels[i];
-        if((!g||ch.g===g)&&(!q||ch.n.toLowerCase().indexOf(q)>=0)){
+        var matchGroup=!g||ch.g===g;
+        var matchQuery=!q||ch.n.toLowerCase().indexOf(q)>=0;
+        var matchFav=curMode!=='fav'||favorites.indexOf(i)>=0;
+        if(matchGroup&&matchQuery&&matchFav){
             ch._r=i;filtered.push(ch);
         }
     }
@@ -1048,10 +1131,10 @@ function tab(m,btn){
     curMode=m;
     document.querySelectorAll('#sb-tabs button').forEach(function(b){b.classList.remove('on')});
     btn.classList.add('on');
-    document.getElementById('sb-search').style.display=m==='ch'?'':'none';
-    document.getElementById('sb-group').style.display=m==='ch'?'':'none';
+    document.getElementById('sb-search').style.display=(m==='ch'||m==='fav')?'':'none';
+    document.getElementById('sb-group').style.display=(m==='ch'||m==='fav')?'':'none';
     document.getElementById('sb-pl').style.display=m==='pl'?'':'none';
-    if(m==='ch')filter();
+    if(m==='ch'||m==='fav')filter();
 }
 
 function parseM3U(text){
@@ -1158,8 +1241,41 @@ function toggleFs(){
     else document.documentElement.requestFullscreen().catch(function(){});
 }
 
+function togglePip(){
+    if(!document.pictureInPictureElement){
+        if(vid.requestPictureInPicture){
+            vid.requestPictureInPicture().catch(function(e){
+                alert('PiP не поддерживается: '+e.message);
+            });
+        }else{
+            alert('Ваш браузер не поддерживает PiP');
+        }
+    }else{
+        document.exitPictureInPicture();
+    }
+}
+
+function toggleFav(idx){
+    var fi=favorites.indexOf(idx);
+    if(fi>=0){
+        favorites.splice(fi,1);
+    }else{
+        favorites.push(idx);
+    }
+    try{localStorage.setItem('iptv-favorites',JSON.stringify(favorites))}catch(e){}
+    render();
+}
+
+function loadFavorites(){
+    try{
+        var s=localStorage.getItem('iptv-favorites');
+        if(s)favorites=JSON.parse(s);
+    }catch(e){}
+}
+
 var params=new URLSearchParams(window.location.search);
 var sUrl=params.get('url'),sIdx=params.get('idx'),pUrl=params.get('pl');
+loadFavorites();
 if(pUrl){loadPlUrl(pUrl)}
 else if(sUrl){play(sUrl,sIdx!==null?parseInt(sIdx):-1);loadChannels()}
 else{loadChannels()}
