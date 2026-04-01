@@ -86,7 +86,7 @@ generate_cgi() {
 
     local channels="" group_opts=""
     if [ -f "$PLAYLIST_FILE" ]; then
-        # Generate channels JS via awk (no JSON parsing needed)
+        # Generate channels JS via awk
         mkdir -p /www/iptv
         {
             echo "var allCh=["
@@ -104,18 +104,18 @@ generate_cgi() {
                 }
                 /^http|^https|^rtsp|^rtmp|^udp|^rtp/ {
                     url=$0
-                    gsub(/\\/, "\\\\", name); gsub(/"/, "\\\"", name); gsub(/\t/, "", name); gsub(/\r/, "", name)
-                    gsub(/\\/, "\\\\", group); gsub(/"/, "\\\"", group); gsub(/\t/, "", group); gsub(/\r/, "", group)
-                    gsub(/\\/, "\\\\", url); gsub(/"/, "\\\"", url); gsub(/\t/, "", url); gsub(/\r/, "", url)
-                    gsub(/\\/, "\\\\", logo); gsub(/"/, "\\\"", logo); gsub(/\t/, "", logo); gsub(/\r/, "", logo)
-                    gsub(/\\/, "\\\\", tvgid); gsub(/"/, "\\\"", tvgid); gsub(/\t/, "", tvgid); gsub(/\r/, "", tvgid)
+                    gsub(/\\/, "\\\\", name); gsub(/"/, "\\\"", name)
+                    gsub(/\\/, "\\\\", group); gsub(/"/, "\\\"", group)
+                    gsub(/\\/, "\\\\", url); gsub(/"/, "\\\"", url)
+                    gsub(/\\/, "\\\\", logo); gsub(/"/, "\\\"", logo)
+                    gsub(/\\/, "\\\\", tvgid); gsub(/"/, "\\\"", tvgid)
                     if(idx>0) printf ","
                     printf "{i:%d,n:\"%s\",g:\"%s\",u:\"%s\",t:\"%s\",l:\"%s\"}", idx++, name, group, url, tvgid, logo
                     if(idx>=5000) exit
                 }
             ' "$PLAYLIST_FILE"
             echo "];"
-        } > /www/iptv/ch.js 2>/dev/null
+        } > /www/iptv/ch.js
 
         echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done > /tmp/iptv-go.txt
         group_opts=$(cat /tmp/iptv-go.txt 2>/dev/null)
@@ -379,7 +379,8 @@ function renderRows(chs){
     var tb=document.getElementById('ch-tb'),h='';
     chs.forEach(function(c){
         var li=c.l?'<img src="'+esc(c.l)+'" style="width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px" onerror="this.style.display=\'none\'">':'';
-        h+='<tr data-group="'+esc(c.g)+'" data-name="'+esc(c.n)+'" data-idx="'+c.i+'" data-url="'+esc(c.u)+'"><td><span class="ch-st unknown" id="st-'+c.i+'"></span></td><td class="ch-n">'+li+esc(c.n)+'</td><td class="ch-g">'+esc(c.g)+'</td><td class="ch-p">—</td><td><button class="b bsm bp" onclick="checkCh('+c.i+',\''+esc(c.u).replace(/'/g,"\\'")+'\')">Пинг</button></td><td><button class="b bsm bo" onclick="editCh('+c.i+')">Изм.</button></td></tr>'
+        var ue=esc(c.u).replace(/'/g,"&#39;");
+        h+='<tr data-group="'+esc(c.g)+'" data-name="'+esc(c.n)+'" data-idx="'+c.i+'" data-url="'+ue+'"><td><span class="ch-st unknown" id="st-'+c.i+'"></span></td><td class="ch-n">'+li+esc(c.n)+'</td><td class="ch-g">'+esc(c.g)+'</td><td class="ch-p">—</td><td><button class="b bsm bp" onclick="checkCh('+c.i+',\''+ue+'\')">Пинг</button></td><td><button class="b bsm bo" onclick="editCh('+c.i+')">Изм.</button></td></tr>'
     });
     tb.innerHTML=h;
     allRows=[];tb.querySelectorAll('tr').forEach(function(r){allRows.push(r)});
