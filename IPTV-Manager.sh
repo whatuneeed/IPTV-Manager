@@ -231,7 +231,7 @@ if [ -n "$ACTION" ]; then
             URL=$(echo "$URL" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
             case "$URL" in
                 http*|https*)
-                    wget -q --timeout=8 --spider --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null
+                    wget -q --timeout=8 -O - --header="User-Agent: VLC/3.0" "$URL" 2>/dev/null | grep -q "EXTM3U"
                     [ $? -eq 0 ] && printf '{"status":"ok","online":true}' || printf '{"status":"ok","online":false}' ;;
                 udp*|rtp*) printf '{"status":"ok","online":true}' ;;
                 *) printf '{"status":"ok","online":false}' ;;
