@@ -186,7 +186,8 @@ function toggleSidebar(){
 
 function loadChannels(){
     var x=new XMLHttpRequest();
-    x.open('GET','/channels.json',true);
+    var url=window.location.origin+'/channels.json';
+    x.open('GET',url,true);
     x.onload=function(){
         try{
             channels=JSON.parse(x.responseText);
