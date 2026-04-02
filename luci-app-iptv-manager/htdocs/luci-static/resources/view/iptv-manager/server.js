@@ -23,16 +23,22 @@ return view.extend({
                 statusEl.style.color = '#1a73e8';
                 statusEl.textContent = 'Запуск...';
 
-                fs.exec_direct('/bin/sh', ['-c',
-                    'sh /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 & ' +
-                    'sleep 3'
-                ]).then(function() {
-                    return checkStatus(2000);
-                }).catch(function(e) {
-                    statusEl.textContent = '✗ Ошибка';
-                    statusEl.style.color = '#ef4444';
-                    startBtn.textContent = 'Запустить';
-                    startBtn.disabled = false;
+                // Write a start script first
+                var script = '#!/bin/sh\n' +
+                    'kill $(pgrep -f "uhttpd.*:' + port + '") 2>/dev/null\n' +
+                    'rm -f /var/run/iptv-httpd.pid\n' +
+                    'sleep 1\n' +
+                    'nohup uhttpd -p 0.0.0.0:' + port + ' -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" >/dev/null 2>&1 &\n' +
+                    'PID=$!\n' +
+                    'sleep 2\n' +
+                    'echo $PID > /var/run/iptv-httpd.pid\n';
+
+                fs.write('/etc/iptv/start-server.sh', script).then(function() {
+                    fs.exec_direct('/etc/iptv/start-server.sh');
+                }).then(function() {
+                    return checkStatus(3000);
+                }).catch(function() {
+                    checkStatus(3000);
                 });
             }
         }, 'Запустить');
@@ -45,16 +51,18 @@ return view.extend({
                 statusEl.style.color = '#ef4444';
                 statusEl.textContent = 'Остановка...';
 
-                fs.exec_direct('/bin/sh', ['-c',
-                    'sh /etc/iptv/IPTV-Manager.sh stop >/dev/null 2>&1 & ' +
-                    'sleep 1'
-                ]).then(function() {
+                var script = '#!/bin/sh\n' +
+                    'kill $(pgrep -f "uhttpd.*:' + port + '") 2>/dev/null\n' +
+                    'rm -f /var/run/iptv-httpd.pid\n' +
+                    'kill $(cat /etc/iptv/monitor.pid 2>/dev/null) 2>/dev/null\n' +
+                    'rm -f /etc/iptv/monitor.pid\n';
+
+                fs.write('/etc/iptv/stop-server.sh', script).then(function() {
+                    return fs.exec_direct('/etc/iptv/stop-server.sh');
+                }).then(function() {
                     return checkStatus(1000);
                 }).catch(function() {
-                    statusEl.textContent = '✗ Ошибка';
-                    statusEl.style.color = '#ef4444';
-                    stopBtn.textContent = 'Остановить';
-                    stopBtn.disabled = false;
+                    checkStatus(1000);
                 });
             }
         }, 'Остановить');
@@ -64,20 +72,24 @@ return view.extend({
             return new Promise(function(resolve) {
                 setTimeout(resolve, d);
             }).then(function() {
-                return fs.access('/var/run/iptv-httpd.pid');
-            }).then(function() {
-                statusEl.textContent = '● Запущен';
-                statusEl.style.color = '#22c55e';
-                startBtn.textContent = '✓ Работает';
-                startBtn.disabled = false;
-                stopBtn.disabled = false;
-                stopBtn.textContent = 'Остановить';
+                return fs.stat('/var/run/iptv-httpd.pid');
+            }).then(function(st) {
+                if (st && st.size > 0) {
+                    statusEl.textContent = '● Запущен';
+                    statusEl.style.color = '#22c55e';
+                    startBtn.textContent = '✓ Работает';
+                    startBtn.disabled = false;
+                    stopBtn.disabled = false;
+                    stopBtn.textContent = 'Остановить';
+                } else {
+                    throw new Error('no pid');
+                }
             }).catch(function() {
                 statusEl.textContent = '○ Остановлен';
                 statusEl.style.color = '#666';
                 startBtn.textContent = 'Запустить';
                 startBtn.disabled = false;
-                stopBtn.disabled = true;
+                stopBtn.disabled = false;
                 stopBtn.textContent = 'Остановить';
             });
         }
