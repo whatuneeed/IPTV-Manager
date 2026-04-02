@@ -4,7 +4,7 @@
 
 return view.extend({
     load: function() {
-        return Promise.all([uci.load('iptv')]);
+        return L.resolveDefault(uci.load('iptv'), {});
     },
 
     render: function() {

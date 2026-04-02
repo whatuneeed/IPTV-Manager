@@ -5,10 +5,7 @@
 
 return view.extend({
     load: function() {
-        return Promise.all([
-            uci.load('iptv'),
-            L.resolveDefault(uci.get('system', '@system[0]', 'hostname'), 'OpenWrt')
-        ]);
+        return L.resolveDefault(uci.load('iptv'), {});
     },
 
     render: function() {
@@ -27,47 +24,19 @@ return view.extend({
                 statusEl.style.color = '#1a73e8';
                 statusEl.textContent = 'Запуск...';
                 infoEl.textContent = '';
-
-                // Try to check if running
+                
                 var xhr = new XMLHttpRequest();
                 xhr.open('GET', adminUrl, true);
                 xhr.timeout = 5000;
                 xhr.onload = function() {
-                    // Already running — nothing to do
                     statusEl.textContent = '● Уже запущен';
                     statusEl.style.color = '#22c55e';
                     startBtn.textContent = '✓ Работает';
                     startBtn.disabled = false;
-                    infoEl.textContent = 'Сервер работает. Админка: ' + adminUrl;
+                    infoEl.textContent = 'Сервер работает';
                 };
                 xhr.onerror = xhr.ontimeout = function() {
-                    // Not running — start via init script
-                    statusEl.textContent = 'Запуск через init-скрипт...';
-                    // Try ubus to execute command
-                    var cmd = '/etc/init.d/iptv-manager start';
-                    L.ubus(null, 'file', 'exec', {
-                        command: '/bin/sh',
-                        params: ['-c', cmd]
-                    }).then(function() {
-                        checkStatusAfter(3000);
-                    }).catch(function() {
-                        // Fallback: try ubus via call with session
-                        L.ubus(null, 'uci', 'get', { config: 'system', section: '@system[0]' }).then(function() {
-                            // Ubus works, try exec
-                            return L.ubus.call('file', 'exec', {
-                                command: '/bin/sh',
-                                params: ['-c', cmd]
-                            });
-                        }).then(function() {
-                            checkStatusAfter(3000);
-                        }).catch(function(e) {
-                            statusEl.textContent = '✗ Ошибка';
-                            statusEl.style.color = '#ef4444';
-                            infoEl.innerHTML = '<span style="color:#ef4444">Не удалось запустить автоматически. Выполните:</span><br><code>sh /etc/iptv/IPTV-Manager.sh</code>';
-                            startBtn.disabled = false;
-                            startBtn.textContent = 'Запустить';
-                        });
-                    });
+                    checkStatusAfter(4000);
                 };
                 xhr.send();
             }
@@ -92,12 +61,10 @@ return view.extend({
                     if (done) return;
                     done = true;
                     statusEl.textContent = '○ Остановлен';
-                    statusEl.style.color = '#ef4444';
                     startBtn.textContent = 'Запустить';
                     startBtn.disabled = false;
                     stopBtn.disabled = false;
                     stopBtn.textContent = 'Остановить';
-                    infoEl.textContent = '';
                 };
                 xhr.onload = onDone;
                 xhr.onerror = onDone;
@@ -108,32 +75,49 @@ return view.extend({
 
         function checkStatusAfter(delay) {
             setTimeout(function() {
-                var xhr2 = new XMLHttpRequest();
-                xhr2.open('GET', adminUrl, true);
-                xhr2.timeout = 3000;
-                xhr2.onload = function() {
-                    statusEl.textContent = '● Запущен';
-                    statusEl.style.color = '#22c55e';
-                    startBtn.textContent = '✓ Работает';
-                    startBtn.disabled = false;
-                    infoEl.textContent = 'Сервер запущен: ' + adminUrl;
-                };
-                xhr2.onerror = xhr2.ontimeout = function() {
-                    statusEl.textContent = '✗ Не удалось запустить';
+                var initScript = '/etc/init.d/iptv-manager start 2>/dev/null; /etc/rc.local 2>/dev/null';
+                
+                L.ubus(null, 'file', 'exec', {
+                    command: '/bin/sh',
+                    params: ['-c', initScript]
+                }).then(function(res) {
+                    setTimeout(function() {
+                        checkRunning();
+                    }, 2000);
+                }).catch(function(e) {
+                    statusEl.textContent = '✗ Нет доступа к запуску';
                     statusEl.style.color = '#ef4444';
-                    infoEl.innerHTML = '<span style="color:#ef4444">Сервер не ответил. Попробуйте: sh /etc/iptv/IPTV-Manager.sh</span>';
+                    infoEl.innerHTML = 'Выполните в терминале: <code>sh /etc/iptv/IPTV-Manager.sh</code>';
                     startBtn.textContent = 'Запустить';
                     startBtn.disabled = false;
-                };
-                xhr2.send();
+                });
             }, delay);
+        }
+
+        function checkRunning() {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', adminUrl, true);
+            xhr.timeout = 3000;
+            xhr.onload = function() {
+                statusEl.textContent = '● Запущен';
+                statusEl.style.color = '#22c55e';
+                startBtn.textContent = '✓ Работает';
+                startBtn.disabled = false;
+            };
+            xhr.onerror = xhr.ontimeout = function() {
+                statusEl.textContent = '✗ Не удалось запустить';
+                statusEl.style.color = '#ef4444';
+                infoEl.innerHTML = 'Сервер не ответил. Выполните: <code>sh /etc/iptv/IPTV-Manager.sh</code>';
+                startBtn.textContent = 'Запустить';
+                startBtn.disabled = false;
+            };
+            xhr.send();
         }
 
         var btnRow = E('div', {
             'style': 'display:flex;gap:10px;flex-wrap:wrap;align-items:center'
         }, [startBtn, stopBtn, statusEl]);
 
-        // Initial status check
         setTimeout(function() {
             var xhr = new XMLHttpRequest();
             xhr.open('GET', adminUrl, true);
@@ -143,7 +127,6 @@ return view.extend({
                 statusEl.style.color = '#22c55e';
                 stopBtn.disabled = false;
                 startBtn.textContent = '✓ Работает';
-                infoEl.textContent = 'Сервер работает: ' + adminUrl;
             };
             xhr.onerror = xhr.ontimeout = function() {
                 statusEl.textContent = '○ Остановлен';
@@ -151,7 +134,6 @@ return view.extend({
                 stopBtn.disabled = true;
                 startBtn.disabled = false;
                 startBtn.textContent = 'Запустить';
-                infoEl.textContent = '';
             };
             xhr.send();
         }, 500);
