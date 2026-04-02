@@ -1,4 +1,7 @@
 #!/bin/sh
+# Strip CR from CRLF lines (fix for GitHub downloads on Windows)
+SELF="$0"
+[ -f "$SELF" ] && sed -i 's/\r$//' "$SELF" 2>/dev/null
 # ==========================================
 # IPTV Manager для OpenWrt v3.11
 # ==========================================
