@@ -2,14 +2,8 @@
 'require view';
 'require uci';
 'require ui';
-'require rpc';
-
-var callFileExec = rpc.declare({
-    object: 'file',
-    method: 'exec',
-    params: [ 'command' ],
-    expect: { }
-});
+'require poll';
+'require fs';
 
 return view.extend({
     load: function() {
@@ -19,10 +13,10 @@ return view.extend({
     render: function() {
         var lan_ip = uci.get('network', 'lan', 'ipaddr') || '192.168.1.1';
         var port = '8082';
-        var adminUrl = 'http://' + lan_ip + ':' + port + '/cgi-bin/admin.cgi';
+        var baseUrl = 'http://' + lan_ip + ':' + port;
+        var adminUrl = baseUrl + '/cgi-bin/admin.cgi';
 
         var statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
-        var infoEl = E('div', { 'style': 'color:#888;font-size:12px;margin-top:4px' });
 
         var startBtn = E('button', {
             'class': 'cbi-button cbi-button-add',
@@ -31,39 +25,32 @@ return view.extend({
                 startBtn.textContent = 'Запуск...';
                 statusEl.style.color = '#1a73e8';
                 statusEl.textContent = 'Запуск...';
-                infoEl.textContent = '';
 
-                // Check if already running
-                var xhr = new XMLHttpRequest();
-                xhr.open('GET', adminUrl, true);
-                xhr.timeout = 3000;
-                xhr.onload = function() {
-                    statusEl.textContent = '● Уже запущен';
-                    statusEl.style.color = '#22c55e';
-                    startBtn.textContent = '✓ Работает';
-                    startBtn.disabled = false;
-                };
-                xhr.onerror = xhr.ontimeout = function() {
-                    // Not running — start via ubus file exec
-                    callFileExec({ command: '/etc/init.d/iptv-manager' }).then(function(res) {
-                        // Try again
-                        checkAfter(3000);
-                    }).catch(function() {
-                        // Try without args
-                        callFileExec({ command: 'sh /etc/iptv/IPTV-Manager.sh' }).then(function(res) {
-                            checkAfter(3000);
-                        }).catch(function() {
-                            statusEl.textContent = '✗ Ошибка запуска';
-                            statusEl.style.color = '#ef4444';
-                            infoEl.innerHTML = 'Не удалось запустить. Выполните: <code>sh /etc/iptv/IPTV-Manager.sh</code>';
-                            startBtn.disabled = false;
-                            startBtn.textContent = 'Запустить';
-                        });
+                // Use ubus file.exec to run the start command
+                L.ubus.call('file', 'exec', {
+                    command: '/bin/sh',
+                    params: ['-c', '/etc/init.d/iptv-manager start >/dev/null 2>&1 &']
+                }).then(function(res) {
+                    // Wait then check
+                    setTimeout(function() {
+                        checkStatus();
+                    }, 3000);
+                }).catch(function(err) {
+                    // Fallback: use uhttpd directly
+                    L.ubus.call('file', 'exec', {
+                        command: 'uhttpd',
+                        params: ['-f', '-p', '0.0.0.0:' + port, '-h', '/www/iptv', '-x', '/www/iptv/cgi-bin', '-i', '.cgi=/bin/sh']
+                    }).then(function(res) {
+                        setTimeout(checkStatus, 3000);
+                    }).catch(function(err2) {
+                        statusEl.textContent = '✗ Ошибка';
+                        statusEl.style.color = '#ef4444';
+                        startBtn.textContent = 'Запустить';
+                        startBtn.disabled = false;
                     });
-                };
-                xhr.send();
+                });
             }
-        }, 'Запустить сервер');
+        }, 'Запустить');
 
         var stopBtn = E('button', {
             'class': 'cbi-button cbi-button-negative',
@@ -72,50 +59,43 @@ return view.extend({
                 stopBtn.textContent = 'Остановка...';
                 statusEl.style.color = '#ef4444';
                 statusEl.textContent = 'Остановка...';
-                infoEl.textContent = '';
 
-                var xhr = new XMLHttpRequest();
-                xhr.open('POST', adminUrl, true);
-                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                xhr.timeout = 10000;
-                var done = false;
-                var onDone = function() {
-                    if (done) return;
-                    done = true;
-                    statusEl.textContent = '○ Остановлен';
-                    startBtn.textContent = 'Запустить';
-                    startBtn.disabled = false;
-                    stopBtn.disabled = false;
+                // Kill uhttpd on port 8082 via ubus
+                L.ubus.call('file', 'exec', {
+                    command: '/bin/sh',
+                    params: ['-c', "kill $(pgrep -f 'uhttpd.*:" + port + "') 2>/dev/null; rm -f /var/run/iptv-httpd.pid"]
+                }).then(function(res) {
+                    checkStatus();
+                }).catch(function() {
+                    statusEl.textContent = '✗ Ошибка';
+                    statusEl.style.color = '#ef4444';
                     stopBtn.textContent = 'Остановить';
-                };
-                xhr.onload = onDone;
-                xhr.onerror = onDone;
-                xhr.ontimeout = onDone;
-                xhr.send('action=stop_server');
+                    stopBtn.disabled = false;
+                });
             }
         }, 'Остановить');
 
-        function checkAfter(delay) {
-            setTimeout(function() {
-                var xhr = new XMLHttpRequest();
-                xhr.open('GET', adminUrl, true);
-                xhr.timeout = 3000;
-                xhr.onload = function() {
-                    statusEl.textContent = '● Запущен';
-                    statusEl.style.color = '#22c55e';
-                    startBtn.textContent = '✓ Работает';
-                    startBtn.disabled = false;
-                    infoEl.textContent = 'Сервер запущен';
-                };
-                xhr.onerror = xhr.ontimeout = function() {
-                    statusEl.textContent = '✗ Не запустился';
-                    statusEl.style.color = '#ef4444';
-                    infoEl.innerHTML = 'Не удалось запустить. Выполните: <code>sh /etc/iptv/IPTV-Manager.sh</code>';
-                    startBtn.disabled = false;
-                    startBtn.textContent = 'Запустить';
-                };
-                xhr.send();
-            }, delay);
+        function checkStatus() {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', adminUrl, true);
+            xhr.timeout = 3000;
+            xhr.onload = function() {
+                statusEl.textContent = '● Запущен';
+                statusEl.style.color = '#22c55e';
+                startBtn.textContent = '✓ Работает';
+                startBtn.disabled = false;
+                stopBtn.disabled = false;
+                stopBtn.textContent = 'Остановить';
+            };
+            xhr.onerror = xhr.ontimeout = function() {
+                statusEl.textContent = '○ Остановлен';
+                statusEl.style.color = '#666';
+                startBtn.textContent = 'Запустить';
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                stopBtn.textContent = 'Остановить';
+            };
+            xhr.send();
         }
 
         var btnRow = E('div', {
@@ -123,29 +103,13 @@ return view.extend({
         }, [startBtn, stopBtn, statusEl]);
 
         // Initial status
-        setTimeout(function() {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', adminUrl, true);
-            xhr.timeout = 3000;
-            xhr.onload = function() {
-                statusEl.textContent = '● Запущен';
-                statusEl.style.color = '#22c55e';
-                stopBtn.disabled = false;
-                startBtn.textContent = '✓ Работает';
-            };
-            xhr.onerror = xhr.ontimeout = function() {
-                statusEl.textContent = '○ Остановлен';
-                statusEl.style.color = '#666';
-                stopBtn.disabled = true;
-            };
-            xhr.send();
-        }, 500);
+        setTimeout(checkStatus, 500);
 
         return E([
             E('h2', {}, 'Сервер'),
             E('p', {}, 'Управление IPTV сервером'),
             E('div', { 'style': 'height:10px' }),
-            E('div', { 'class': 'cbi-section' }, [btnRow, infoEl])
+            E('div', { 'class': 'cbi-section' }, [btnRow])
         ]);
     }
 });
