@@ -543,6 +543,15 @@ hd_count=0
 [ -f "$PL" ] && hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null || true)
 [ -z "$hd_count" ] && hd_count=0
 sd_count=$((${CH:-0} - ${hd_count:-0}))
+pname="${PLAYLIST_NAME:-$PSZ}"
+psz="$PSZ"
+esz="$ESZ"
+group_opts=""
+[ -n "$groups" ] && group_opts=$(echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done)
+pi="$PI"
+ei="$EI"
+plu="$PLU"
+elu="$ELU"
 
 group_opts=""
 if [ -n "$groups" ]; then
@@ -635,16 +644,21 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="h"><div><h1>IPTV Manager</h1><p>OpenWrt v$IPTV_MANAGER_VERSION</p></div><button class="tt" id="ttb" onclick="toggleTheme()">🌙 Тема</button></div>
 <div class="st">
 <div class="s"><div class="sv">$CH</div><div class="sl">Каналов</div></div>
-<div class="s"><div class="sv">${pname:-$psz}</div><div class="sl">Плейлист</div></div>
-<div class="s"><div class="sv">$esz</div><div class="sl">EPG</div></div>
+<div class="s"><div class="sv">${pname:-$PSZ}</div><div class="sl">Плейлист</div></div>
+<div class="s"><div class="sv">$ESZ</div><div class="sl">EPG</div></div>
 <div class="s"><div class="sv">$grp_count</div><div class="sl">Групп</div></div>
 <div class="s"><div class="sv">$hd_count</div><div class="sl">HD</div></div>
 <div class="s"><div class="sv">$sd_count</div><div class="sl">SD</div></div>
 </div>
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/playlist.m3u</code><button onclick="cp(this)">Копировать</button></div>
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/epg.xml</code><button onclick="cp(this)">Копировать</button></div>
-<div class="tb"></div>
-<div class="pn" id="p-status" style="display:block">
+<div class="tb">
+<button class="t a" onclick="st('status',this)">Каналы</button>
+<button class="t" onclick="st('playlist',this)">Плейлист</button>
+<button class="t" onclick="st('epg',this)">Телепрограмма</button>
+<button class="t" onclick="st('settings',this)">Настройки</button>
+</div>
+<div class="pn a" id="p-status">
 <h2>Список каналов</h2>
 <div class="fb">
 <select id="f-g" onchange="filterCh()"><option value="">Все группы</option>$group_opts</select>
@@ -660,6 +674,89 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 </table>
 </div>
 <div id="pager" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
+</div>
+<div class="pn" id="p-playlist">
+<h2>Плейлист</h2>
+<div class="fg"><label>Название плейлиста</label><input type="text" id="pl-name" placeholder="Мой плейлист" value="$pname"><div class="hint">Произвольное имя для отображения в статистике</div></div>
+<div class="bg" style="margin-top:6px"><button class="b bp bsm" onclick="setPlName()">Сохранить название</button></div>
+<hr>
+<div class="fg"><label>Ссылка на плейлист</label><input type="url" id="pl-u" placeholder="http://example.com/playlist.m3u" value="$PURL"><div class="hint">Вставьте ссылку на M3U/M3U8 плейлист</div></div>
+<div class="bg"><button class="b bp" onclick="setPlUrl()">Применить</button><button class="b bs" onclick="act('refresh_playlist','')">Обновить</button></div>
+<hr>
+<h3>Исходный M3U</h3>
+<div class="fg"><textarea id="pl-r" readonly style="min-height:200px"></textarea></div>
+</div>
+<div class="pn" id="p-epg">
+<h2>Телепрограмма (EPG)</h2>
+$EPG_NOTICE
+<div class="fg"><label>Ссылка на EPG (XMLTV)</label><input type="url" id="epg-u" placeholder="https://iptvx.one/EPG_LITE" value="$EURL"><div class="hint">Поддерживаются XML и XML.gz. EPG хранится в RAM (/tmp).</div></div>
+<div class="bg"><button class="b bp" onclick="setEpgUrl()">Применить</button><button class="b bs" onclick="act('refresh_epg','');setTimeout(loadEpgTable,1000)">Обновить</button></div>
+<hr>
+<h3>Передачи <button class="b bsm bo" onclick="loadEpgTable()">🔄 Обновить</button></h3>
+$EPGROWS
+</div>
+<div class="pn" id="p-settings">
+<h2>Настройки</h2>
+<div class="sg">
+<div class="sc">
+<h3>Расписание плейлиста</h3>
+<select id="s-pl">
+<option value="0">Выкл</option>
+<option value="1">Каждый час</option>
+<option value="6">Каждые 6ч</option>
+<option value="12">Каждые 12ч</option>
+<option value="24">Раз в сутки</option>
+</select>
+<div class="si">Последнее: <span>$PLU</span></div>
+</div>
+<div class="sc">
+<h3>Расписание EPG</h3>
+<select id="s-epg">
+<option value="0">Выкл</option>
+<option value="1">Каждый час</option>
+<option value="6">Каждые 6ч</option>
+<option value="12">Каждые 12ч</option>
+<option value="24">Раз в сутки</option>
+</select>
+<div class="si">Последнее: <span>$ELU</span></div>
+</div>
+</div>
+<div class="bg"><button class="b bp bsm" onclick="saveSched()">Сохранить</button></div>
+<hr>
+<h3>Бэкап и восстановление</h3>
+<div class="sg">
+<div class="sc">
+<h3>Экспорт</h3>
+<div class="si">Скачать архив со всеми настройками</div>
+<div class="bg" style="margin-top:8px"><button class="b bs bsm" onclick="act('backup','')">Скачать бэкап</button></div>
+</div>
+<div class="sc">
+<h3>Импорт</h3>
+<div class="bg" style="margin-top:4px">
+<label class="b bs bsm" for="imp-file" style="cursor:pointer">Выберите файл</label>
+<input type="file" id="imp-file" accept=".tar.gz" style="display:none">
+<button class="b bp bsm" onclick="doImport()">Восстановить</button>
+</div>
+</div>
+</div>
+<hr>
+<h3>Обновление</h3>
+<div class="bg"><button class="b bp bsm" onclick="checkUpdate()">🔄 Проверить обновления</button></div>
+<hr>
+<h3>Безопасность</h3>
+<div class="sg">
+<div class="sc">
+<h3>Пароль на админку</h3>
+<div class="fg" style="margin-top:6px"><label>Логин</label><input type="text" id="sec-user" placeholder="Пусто = отключить"></div>
+<div class="fg"><label>Пароль</label><input type="password" id="sec-pass" placeholder="Пусто = отключить"></div>
+<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="saveSecurity()">Сохранить</button></div>
+</div>
+<div class="sc">
+<h3>API токен</h3>
+<div class="fg" style="margin-top:6px"><label>Токен</label><input type="text" id="sec-token" placeholder="Пусто = отключить"></div>
+<div class="bg" style="margin-top:8px"><button class="b bs bsm" onclick="saveToken()">Сохранить</button></div>
+</div>
+</div>
 </div>
 <div class="modal" id="em">
 <div class="modal-box">
@@ -704,7 +801,14 @@ function toggleTheme(){
     }
 })();
 
-function st(){}
+function st(t,e){
+    document.querySelectorAll('.t').forEach(function(x){x.classList.remove('a')});
+    document.querySelectorAll('.pn').forEach(function(x){x.classList.remove('a')});
+    document.getElementById('p-'+t).classList.add('a');
+    e.classList.add('a');
+    if(t==='playlist')loadRaw();
+    if(t==='epg')loadEpgTable();
+}
 
 function cp(b){
     var c=b.previousElementSibling,r=document.createRange();
