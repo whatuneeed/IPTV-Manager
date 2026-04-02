@@ -1747,6 +1747,108 @@ uninstall() {
     echo_info "Для выхода введите Enter"
 }
 
+check_for_updates() {
+    echo_color "Проверка обновлений"
+    echo_info "Текущая версия: $IPTV_MANAGER_VERSION"
+    echo_info "Загружаем последнюю версию с GitHub..."
+    local latest=$(wget -q --timeout=10 --no-check-certificate -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null | head -10 | grep -o 'IPTV_MANAGER_VERSION="[^"]*"' | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
+    if [ -z "$latest" ]; then
+        echo_error "Не удалось получить информацию о версии"
+        PAUSE
+        return 1
+    fi
+    if [ "$latest" = "$IPTV_MANAGER_VERSION" ]; then
+        echo_success "У вас последняя версия v$IPTV_MANAGER_VERSION"
+    else
+        echo_success "Доступна новая версия: v$latest (у вас v$IPTV_MANAGER_VERSION)"
+        echo -ne "${YELLOW}Обновить? (y/N): ${NC}"
+        read ans </dev/tty
+        case "$ans" in y|Y|yes|Yes) ;; *) echo_info "Отмена"; return 1 ;; esac
+        do_update_script
+    fi
+}
+
+do_update_script() {
+    echo_info "Обновляем скрипт..."
+    local tmp="/tmp/IPTV-Manager-new.sh"
+    if wget -q --timeout=15 --no-check-certificate -O "$tmp" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$tmp" ]; then
+        local new_ver=$(grep -o 'IPTV_MANAGER_VERSION="[^"]*"' "$tmp" | head -1 | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
+        cp "$0" "/etc/iptv/IPTV-Manager.sh.bak" 2>/dev/null
+        cp "$tmp" "/etc/iptv/IPTV-Manager.sh"
+        chmod +x "/etc/iptv/IPTV-Manager.sh"
+        rm -f "$tmp"
+        echo_success "Обновлено до v$new_ver!"
+        echo_info "Перезапуск..."
+        exec sh "/etc/iptv/IPTV-Manager.sh"
+    else
+        echo_error "Не удалось скачать обновление"
+        rm -f "$tmp"
+        PAUSE
+        return 1
+    fi
+}
+
+install_iptv() {
+    echo_color "Установка IPTV Manager"
+    echo_info "Загружаем последнюю версию с GitHub..."
+    local tmp="/tmp/IPTV-Manager-install.sh"
+    if wget -q --timeout=15 --no-check-certificate -O "$tmp" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$tmp" ]; then
+        local ver=$(grep -o 'IPTV_MANAGER_VERSION="[^"]*"' "$tmp" | head -1 | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
+        echo_info "Устанавливаем v$ver..."
+        mkdir -p /etc/iptv
+        cp "$tmp" "/etc/iptv/IPTV-Manager.sh"
+        chmod +x "/etc/iptv/IPTV-Manager.sh"
+        rm -f "$tmp"
+        echo_success "Установлено! Запуск..."
+        exec sh "/etc/iptv/IPTV-Manager.sh"
+    else
+        echo_error "Не удалось скачать скрипт"
+        rm -f "$tmp"
+        PAUSE
+        return 1
+    fi
+}
+
+reinstall_iptv() {
+    echo_color "Переустановка IPTV Manager"
+    echo_info "Текущая версия: $IPTV_MANAGER_VERSION"
+    echo_info "Ваши настройки и плейлист будут сохранены"
+    echo -ne "${YELLOW}Продолжить? (y/N): ${NC}"
+    read ans </dev/tty
+    case "$ans" in y|Y|yes|Yes) ;; *) echo_info "Отмена"; return 1 ;; esac
+    echo_info "Останавливаем сервер..."
+    stop_http_server
+    stop_scheduler
+    echo_info "Загружаем последнюю версию..."
+    local tmp="/tmp/IPTV-Manager-reinstall.sh"
+    if wget -q --timeout=15 --no-check-certificate -O "$tmp" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$tmp" ]; then
+        local ver=$(grep -o 'IPTV_MANAGER_VERSION="[^"]*"' "$tmp" | head -1 | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
+        cp /etc/iptv/playlist.m3u /tmp/iptv-pl-backup.m3u 2>/dev/null
+        cp /etc/iptv/iptv.conf /tmp/iptv-conf-backup.conf 2>/dev/null
+        cp /etc/iptv/epg.conf /tmp/iptv-epg-backup.conf 2>/dev/null
+        cp /etc/iptv/schedule.conf /tmp/iptv-sched-backup.conf 2>/dev/null
+        cp /etc/iptv/favorites.json /tmp/iptv-fav-backup.json 2>/dev/null
+        cp /etc/iptv/security.conf /tmp/iptv-sec-backup.conf 2>/dev/null
+        cp "$tmp" "/etc/iptv/IPTV-Manager.sh"
+        chmod +x "/etc/iptv/IPTV-Manager.sh"
+        cp /tmp/iptv-pl-backup.m3u /etc/iptv/playlist.m3u 2>/dev/null
+        cp /tmp/iptv-conf-backup.conf /etc/iptv/iptv.conf 2>/dev/null
+        cp /tmp/iptv-epg-backup.conf /etc/iptv/epg.conf 2>/dev/null
+        cp /tmp/iptv-sched-backup.conf /etc/iptv/schedule.conf 2>/dev/null
+        cp /tmp/iptv-fav-backup.json /etc/iptv/favorites.json 2>/dev/null
+        cp /tmp/iptv-sec-backup.conf /etc/iptv/security.conf 2>/dev/null
+        rm -f "$tmp" /tmp/iptv-pl-backup.m3u /tmp/iptv-conf-backup.conf /tmp/iptv-epg-backup.conf /tmp/iptv-sched-backup.conf /tmp/iptv-fav-backup.json /tmp/iptv-sec-backup.conf
+        echo_success "Переустановлено до v$ver!"
+        echo_info "Настройки восстановлены. Запуск..."
+        exec sh "/etc/iptv/IPTV-Manager.sh"
+    else
+        echo_error "Не удалось скачать скрипт"
+        rm -f "$tmp"
+        PAUSE
+        return 1
+    fi
+}
+
 # ==========================================
 # Меню
 # ==========================================
@@ -1792,6 +1894,12 @@ show_menu() {
     echo -e "${YELLOW}── Настройки ─────────────────────────${NC}"
     echo -e "${CYAN}10) ${GREEN}Расписание обновлений${NC}"
     echo -e "${CYAN}11) ${GREEN}Автозапуск${NC}"
+    echo -e "${CYAN}14) ${GREEN}Проверить обновления${NC}"
+    echo -e "${CYAN}15) ${GREEN}Обновить скрипт${NC}"
+    echo ""
+    echo -e "${YELLOW}── Установка ─────────────────────────${NC}"
+    echo -e "${CYAN}16) ${GREEN}Установить на роутер${NC}"
+    echo -e "${CYAN}17) ${GREEN}Переустановить${NC}"
     echo ""
     echo -e "${YELLOW}── Удаление ──────────────────────────${NC}"
     echo -e "${CYAN}12) ${GREEN}Удалить плейлист${NC}"
@@ -1806,7 +1914,10 @@ show_menu() {
         4) do_update_playlist ;; 5) setup_epg ;; 6) do_update_epg ;; 7) remove_epg ;;
         8) start_http_server ;; 9) stop_http_server ;;
         10) setup_schedule ;; 11) setup_autostart ;;
-        12) remove_playlist ;; 13) uninstall ;; *) echo_info "Выход"; exit 0 ;;
+        12) remove_playlist ;; 13) uninstall ;;
+        14) check_for_updates ;; 15) do_update_script ;;
+        16) install_iptv ;; 17) reinstall_iptv ;;
+        *) echo_info "Выход"; exit 0 ;;
     esac
     PAUSE
 }
