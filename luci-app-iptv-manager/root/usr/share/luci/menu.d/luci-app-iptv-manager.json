@@ -9,49 +9,17 @@
             "acl": [ "luci-app-iptv-manager" ]
         }
     },
-    "admin/services/iptv-manager/playlist": {
-        "title": "Плейлист",
+    "admin/services/iptv-manager/iptv": {
+        "title": "IPTV",
         "order": 1,
         "action": {
             "type": "view",
-            "path": "iptv-manager/playlist"
-        }
-    },
-    "admin/services/iptv-manager/epg": {
-        "title": "Телепрограмма",
-        "order": 2,
-        "action": {
-            "type": "view",
-            "path": "iptv-manager/epg"
-        }
-    },
-    "admin/services/iptv-manager/schedule": {
-        "title": "Расписание",
-        "order": 3,
-        "action": {
-            "type": "view",
-            "path": "iptv-manager/schedule"
-        }
-    },
-    "admin/services/iptv-manager/security": {
-        "title": "Безопасность",
-        "order": 4,
-        "action": {
-            "type": "view",
-            "path": "iptv-manager/security"
-        }
-    },
-    "admin/services/iptv-manager/channels": {
-        "title": "Каналы",
-        "order": 5,
-        "action": {
-            "type": "view",
-            "path": "iptv-manager/channels"
+            "path": "iptv-manager/iptv"
         }
     },
     "admin/services/iptv-manager/player": {
         "title": "Плеер",
-        "order": 6,
+        "order": 2,
         "action": {
             "type": "view",
             "path": "iptv-manager/player"

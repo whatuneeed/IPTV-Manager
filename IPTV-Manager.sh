@@ -80,7 +80,7 @@ generate_cgi() {
     [ -f "$PLAYLIST_FILE" ] && groups=$(grep -o 'group-title="[^"]*"' "$PLAYLIST_FILE" | sed 's/group-title="//;s/"//' | sort -u)
     local grp_count=$(echo "$groups" | grep -c . 2>/dev/null || echo 0)
     local hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PLAYLIST_FILE" 2>/dev/null || echo 0)
-    local sd_count=$((ch - hd_count))
+    local sd_count=$((${ch:-0} - ${hd_count:-0}))
 
     # Генерация JSON каналов через awk
     mkdir -p /www/iptv
@@ -487,7 +487,7 @@ groups=""
 [ -f "$PL" ] && groups=$(grep -o 'group-title="[^"]*"' "$PL" | sed 's/group-title="//;s/"//' | sort -u)
 grp_count=$(echo "$groups" | grep -c . 2>/dev/null || echo 0)
 hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null || echo 0)
-sd_count=$((CH - hd_count))
+sd_count=$((${CH:-0} - ${hd_count:-0}))
 
 group_opts=""
 if [ -n "$groups" ]; then
@@ -504,6 +504,7 @@ cat << HTMLEND
 <style>
 :root{--bg:#f0f2f5;--card:#fff;--text:#1a1a2e;--text2:#666;--text3:#888;--border:#e0e0e0;--input-bg:#fafafa;--hover-bg:#f8f9fa;--primary:#1a73e8;--primary-hover:#1557b0;--success:#1e8e3e;--danger:#d93025;--shadow:0 1px 3px rgba(0,0,0,.06);--shadow-lg:0 8px 32px rgba(0,0,0,.15);--modal-bg:rgba(0,0,0,.4)}
 [data-theme="dark"]{--bg:#0a0e1a;--card:#1e293b;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--border:#334155;--input-bg:#0f172a;--hover-bg:#334155;--primary:#3b82f6;--primary-hover:#2563eb;--success:#22c55e;--danger:#ef4444;--shadow:0 1px 3px rgba(0,0,0,.2);--shadow-lg:0 8px 32px rgba(0,0,0,.4);--modal-bg:rgba(0,0,0,.6)}
+[data-theme="openwrt"]{--bg:#1a1b26;--card:#24283b;--text:#c0caf5;--text2:#9aa5ce;--text3:#565f89;--border:#3b4261;--input-bg:#1e2030;--hover-bg:#292e42;--primary:#7aa2f7;--primary-hover:#6893db;--success:#9ece6a;--danger:#f7768e;--shadow:0 1px 3px rgba(0,0,0,.2);--shadow-lg:0 8px 32px rgba(0,0,0,.4);--modal-bg:rgba(0,0,0,.6)}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background .2s,color .2s}
 .c{max-width:1200px;margin:0 auto;padding:16px}
@@ -587,13 +588,8 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 </div>
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/playlist.m3u</code><button onclick="cp(this)">Копировать</button></div>
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/epg.xml</code><button onclick="cp(this)">Копировать</button></div>
-<div class="tb">
-<button class="t a" onclick="st('status',this)">Каналы</button>
-<button class="t" onclick="st('playlist',this)">Плейлист</button>
-<button class="t" onclick="st('epg',this)">Телепрограмма</button>
-<button class="t" onclick="st('settings',this)">Настройки</button>
-</div>
-<div class="pn a" id="p-status">
+<div class="tb"></div>
+<div class="pn" id="p-status" style="display:block">
 <h2>Список каналов</h2>
 <div class="fb">
 <select id="f-g" onchange="filterCh()"><option value="">Все группы</option>$group_opts</select>
@@ -609,94 +605,6 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 </table>
 </div>
 <div id="pager" style="display:flex;justify-content:center;align-items:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
-</div>
-<div class="pn" id="p-playlist">
-<h2>Плейлист</h2>
-<div class="fg"><label>Название плейлиста</label><input type="text" id="pl-name" placeholder="Мой плейлист" value="$pname"><div class="hint">Произвольное имя для отображения в статистике</div></div>
-<div class="bg" style="margin-top:6px"><button class="b bp bsm" onclick="setPlName()">Сохранить название</button></div>
-<hr>
-<div class="fg"><label>Ссылка на плейлист</label><input type="url" id="pl-u" placeholder="http://example.com/playlist.m3u" value="$purl"><div class="hint">Вставьте ссылку на M3U/M3U8 плейлист</div></div>
-<div class="bg"><button class="b bp" onclick="setPlUrl()">Применить</button><button class="b bs" onclick="act('refresh_playlist','')">Обновить</button></div>
-<hr>
-<h3>Исходный M3U</h3>
-<div class="fg"><textarea id="pl-r" readonly style="min-height:200px"></textarea></div>
-</div>
-<div class="pn" id="p-epg">
-<h2>Телепрограмма (EPG)</h2>
-$epg_notice
-<div class="fg"><label>Ссылка на EPG (XMLTV)</label><input type="url" id="epg-u" placeholder="https://iptvx.one/EPG_LITE" value="$eurl"><div class="hint">Поддерживаются XML и XML.gz. Распаковка автоматическая. EPG хранится в RAM (/tmp).</div></div>
-<div class="bg"><button class="b bp" onclick="setEpgUrl()">Применить</button><button class="b bs" onclick="act('refresh_epg','');setTimeout(loadEpgTable,1000)">Обновить</button></div>
-<hr>
-<h3>Передачи <button class="b bsm bo" onclick="loadEpgTable()">🔄 Обновить</button></h3>
-<div style="overflow-x:auto">
-<table class="epg-t">
-<thead><tr><th>Время</th><th>Канал</th><th>Передача</th></tr></thead>
-<tbody id="epg-tb"><tr><td colspan="3" class="loading">Загрузка...</td></tbody>
-</table>
-</div>
-</div>
-<div class="pn" id="p-settings">
-<h2>Настройки</h2>
-<div class="sg">
-<div class="sc">
-<h3>Расписание плейлиста</h3>
-<select id="s-pl">
-<option value="0">Выкл</option>
-<option value="1">Каждый час</option>
-<option value="6">Каждые 6ч</option>
-<option value="12">Каждые 12ч</option>
-<option value="24">Раз в сутки</option>
-</select>
-<div class="si">Последнее: <span>$plu</span></div>
-</div>
-<div class="sc">
-<h3>Расписание EPG</h3>
-<select id="s-epg">
-<option value="0">Выкл</option>
-<option value="1">Каждый час</option>
-<option value="6">Каждые 6ч</option>
-<option value="12">Каждые 12ч</option>
-<option value="24">Раз в сутки</option>
-</select>
-<div class="si">Последнее: <span>$elu</span></div>
-</div>
-</div>
-<div class="bg"><button class="b bp bsm" onclick="saveSched()">Сохранить</button></div>
-<hr>
-<h3>Бэкап и восстановление</h3>
-<div class="sg">
-<div class="sc">
-<h3>Экспорт</h3>
-<div class="si">Скачать архив со всеми настройками, плейлистом и EPG</div>
-<div class="bg" style="margin-top:8px"><button class="b bs bsm" onclick="act('backup','')">Скачать бэкап</button></div>
-</div>
-<div class="sc">
-<h3>Импорт</h3>
-<div class="bg" style="margin-top:4px">
-<label class="b bs bsm" for="imp-file" style="cursor:pointer">Выберите файл</label>
-<input type="file" id="imp-file" accept=".tar.gz" style="display:none">
-<button class="b bp bsm" onclick="doImport()">Восстановить</button>
-</div>
-</div>
-</div>
-<hr>
-<h3>Обновление</h3>
-<div class="bg"><button class="b bp bsm" onclick="checkUpdate()">🔄 Проверить обновления</button></div>
-<hr>
-<h3>Безопасность</h3>
-<div class="sg">
-<div class="sc">
-<h3>Пароль на админку</h3>
-<div class="fg" style="margin-top:6px"><label>Логин</label><input type="text" id="sec-user" placeholder="Оставьте пустым для отключения"></div>
-<div class="fg"><label>Пароль</label><input type="password" id="sec-pass" placeholder="Оставьте пустым для отключения"></div>
-<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="saveSecurity()">Сохранить</button></div>
-</div>
-<div class="sc">
-<h3>API токен</h3>
-<div class="fg" style="margin-top:6px"><label>Токен</label><input type="text" id="sec-token" placeholder="Оставьте пустым для отключения"></div>
-<div class="si" style="margin-top:4px">Передавайте в заголовке <code>X-API-Token</code></div>
-<div class="bg" style="margin-top:8px"><button class="b bs bsm" onclick="saveToken()">Сохранить</button></div>
-</div>
 </div>
 <div class="modal" id="em">
 <div class="modal-box">
@@ -721,26 +629,27 @@ var PS=150,CP=0,filteredRows=[];
 var showFavOnly=false;
 
 function toggleTheme(){
-    var d=document.documentElement,t=d.getAttribute('data-theme')==='dark'?'light':'dark';
-    d.setAttribute('data-theme',t);
-    document.getElementById('ttb').innerHTML=t==='dark'?'☀️ Тема':'🌙 Тема';
-    try{localStorage.setItem('iptv-theme',t)}catch(e){}
+    var d=document.documentElement,c=d.getAttribute('data-theme')||'light';
+    var n=c==='light'?'dark':c==='dark'?'openwrt':'light';
+    d.setAttribute('data-theme',n);
+    var b=document.getElementById('ttb');
+    if(b)b.innerHTML=n==='light'?'🌙 Тема':n==='dark'?'🟣 Тема':'☀️ Тема';
+    try{localStorage.setItem('iptv-theme',n)}catch(e){}
 }
 (function(){
     try{
         var t=localStorage.getItem('iptv-theme');
-        if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');document.getElementById('ttb').innerHTML='☀️ Тема'}
+        if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');document.getElementById('ttb').innerHTML='🟣 Тема'}
+        else if(t==='openwrt'){document.documentElement.setAttribute('data-theme','openwrt');document.getElementById('ttb').innerHTML='☀️ Тема'}
     }catch(e){}
+    if(window.parent!==window){
+        document.documentElement.setAttribute('data-theme','openwrt');
+        var b=document.getElementById('ttb');
+        if(b)b.innerHTML='☀️ Тема';
+    }
 })();
 
-function st(t,e){
-    document.querySelectorAll('.t').forEach(function(x){x.classList.remove('a')});
-    document.querySelectorAll('.pn').forEach(function(x){x.classList.remove('a')});
-    document.getElementById('p-'+t).classList.add('a');
-    e.classList.add('a');
-    if(t==='playlist')loadRaw();
-    if(t==='epg')loadEpgTable();
-}
+function st(){}
 
 function cp(b){
     var c=b.previousElementSibling,r=document.createRange();
@@ -1175,8 +1084,8 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 #topbar button{padding:7px 14px;border:none;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px;white-space:nowrap;transition:background .15s}
 .btn-play{background:var(--accent);color:#fff}.btn-play:hover{background:var(--accent2)}
 .btn-icon{background:var(--hover);color:var(--text2);padding:7px 10px;font-size:16px}.btn-icon:hover{background:var(--border);color:var(--text)}
-#video-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative;min-height:0;overflow:hidden}
-video{max-width:100%;max-height:100%;background:#000;display:block}
+#video-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg);position:relative;min-height:0;overflow:hidden}
+video{max-width:100%;max-height:100%;background:var(--bg);display:block}
 #epg-overlay{position:absolute;bottom:0;left:0;right:0;background:rgba(15,23,42,.92);padding:12px 16px;max-height:120px;overflow-y:auto;backdrop-filter:blur(8px);display:none}
 #epg-overlay.show{display:block}
 #epg-overlay .epg-now{font-size:13px;color:var(--green);font-weight:600;margin-bottom:4px}
@@ -2094,7 +2003,7 @@ INITEOF
     if [ "$luci_choice" = "1" ]; then
         echo_info "Скачиваем LuCI-плагин..."
         local luci_base="https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/luci-app-iptv-manager"
-        local luci_files="htdocs/luci-static/resources/view/iptv-manager/playlist.js htdocs/luci-static/resources/view/iptv-manager/epg.js htdocs/luci-static/resources/view/iptv-manager/schedule.js htdocs/luci-static/resources/view/iptv-manager/security.js htdocs/luci-static/resources/view/iptv-manager/channels.js htdocs/luci-static/resources/view/iptv-manager/player.js root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
+        local luci_files="htdocs/luci-static/resources/view/iptv-manager/iptv.js htdocs/luci-static/resources/view/iptv-manager/player.js root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
         local total=0
         local ok=0
         for f in $luci_files; do
@@ -2114,7 +2023,7 @@ INITEOF
                 cat /tmp/luci-wget-err 2>/dev/null
             fi
         done
-        if [ "$ok" -ge 7 ]; then
+        if [ "$ok" -ge 5 ]; then
             chmod +x /etc/uci-defaults/99-luci-iptv-manager 2>/dev/null
             /etc/uci-defaults/99-luci-iptv-manager 2>/dev/null
             /etc/init.d/rpcd restart 2>/dev/null
