@@ -30,6 +30,12 @@ mkdir -p "$IPTV_DIR"
 [ -f "$FAVORITES_FILE" ] || echo "[]" > "$FAVORITES_FILE"
 [ -f "$SECURITY_FILE" ] || printf 'ADMIN_USER=""\nADMIN_PASS=""\nAPI_TOKEN=""\n' > "$SECURITY_FILE"
 
+# LuCI UCI config (required for LuCI plugin to work)
+if ! grep -q 'config iptv' /etc/config/iptv 2>/dev/null; then
+    mkdir -p /etc/config
+    printf 'config iptv main\n\toption enabled "1"\n' > /etc/config/iptv
+fi
+
 # Auto-update on startup
 _auto_update() {
     local latest=$(wget -q --timeout=10 --no-check-certificate -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null | head -10 | grep -o 'IPTV_MANAGER_VERSION="[^"]*"' | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
@@ -81,7 +87,10 @@ load_sched() {
     if [ -f "$SCHEDULE_FILE" ]; then . "$SCHEDULE_FILE"; else PLAYLIST_INTERVAL="0"; EPG_INTERVAL="0"; PLAYLIST_LAST_UPDATE=""; EPG_LAST_UPDATE=""; fi
 }
 save_sched() { printf 'PLAYLIST_INTERVAL="%s"\nEPG_INTERVAL="%s"\nPLAYLIST_LAST_UPDATE="%s"\nEPG_LAST_UPDATE="%s"\n' "$1" "$2" "$3" "$4" > "$SCHEDULE_FILE"; }
-get_ch() { [ -f "$PLAYLIST_FILE" ] && grep -c "^#EXTINF" "$PLAYLIST_FILE" 2>/dev/null || echo "0"; }
+get_ch() {
+    local n=$(grep -c "^#EXTINF" "$PLAYLIST_FILE" 2>/dev/null)
+    echo "${n:-0}"
+}
 file_size() {
     [ -f "$1" ] || { echo "0 B"; return; }
     local s=$(wc -c < "$1" 2>/dev/null)
@@ -116,12 +125,13 @@ generate_cgi() {
     local elu="${EPG_LAST_UPDATE:----}"
 
     local groups=""
-    [ -f "$PLAYLIST_FILE" ] && groups=$(grep -o 'group-title="[^"]*"' "$PLAYLIST_FILE" | sed 's/group-title="//;s/"//' | sort -u)
-    local grp_count=$(echo "$groups" | grep -c . 2>/dev/null)
-    [ -z "$grp_count" ] && grp_count=0
-    local hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PLAYLIST_FILE" 2>/dev/null)
+    [ -f "$PLAYLIST_FILE" ] && groups=$(grep -o 'group-title="[^"]*"' "$PLAYLIST_FILE" 2>/dev/null | sed 's/group-title="//;s/"//' | sort -u | grep . || true)
+    local grp_count=0
+    [ -n "$groups" ] && grp_count=$(echo "$groups" | wc -l)
+    local hd_count=0
+    [ -f "$PLAYLIST_FILE" ] && hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PLAYLIST_FILE" 2>/dev/null || true)
     [ -z "$hd_count" ] && hd_count=0
-    local sd_count=$((${ch:-0} - ${hd_count:-0}))
+    local sd_count=$((ch - hd_count))
 
     # Генерация JSON каналов через awk
     mkdir -p /www/iptv
@@ -526,10 +536,11 @@ EPGROWS=""
 [ -f "$EGZ" ] && EPGROWS=$(gunzip -c "$EGZ" 2>/dev/null | awk '/<programme /{s=$0;if(match(s,/start="[0-9]+/)){st=substr(s,RSTART+7,RLENGTH-7);if(match(s,/channel="[^"]+"/)){ch=substr(s,RSTART+9,RLENGTH-9)}}}/<title/{t=$0;if(match(t,/<title[^>]*>[^<]*<\/title>/)){t=substr(t,RSTART,RLENGTH);gsub(/<[^>]*>/,"",t);ti=t}}/<\/programme>/{if(ti!=""&&ch!=""&&st!=""){printf "<tr><td>%s</td><td>%s</td><td>%s</td></tr>\n",substr(st,9,2)":"substr(st,11,2),ch,ti;c++;if(c>=30)exit}ti=""}' 2>/dev/null)
 
 groups=""
-[ -f "$PL" ] && groups=$(grep -o 'group-title="[^"]*"' "$PL" | sed 's/group-title="//;s/"//' | sort -u)
-grp_count=$(echo "$groups" | grep -c . 2>/dev/null)
-[ -z "$grp_count" ] && grp_count=0
-hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null)
+[ -f "$PL" ] && groups=$(grep -o 'group-title="[^"]*"' "$PL" 2>/dev/null | sed 's/group-title="//;s/"//' | sort -u | grep . || true)
+grp_count=0
+[ -n "$groups" ] && grp_count=$(echo "$groups" | wc -l | tr -d ' ')
+hd_count=0
+[ -f "$PL" ] && hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null || true)
 [ -z "$hd_count" ] && hd_count=0
 sd_count=$((${CH:-0} - ${hd_count:-0}))
 
