@@ -15,92 +15,85 @@ return view.extend({
         return L.resolveDefault(uci.load('iptv'), {});
     },
 
-    _isRunning: function(sel) {
+    _checkStatus: function(sel) {
         return callExec({
-            command: '/bin/sh',
-            params: ['-c', 'wget -q -O /dev/null --timeout=2 http://192.168.1.1:8082/cgi-bin/admin.cgi 2>/dev/null']
+            command: '/etc/iptv/IPTV-Manager.sh',
+            params: ['status']
         }).then(function(res) {
-            return { running: true };
-        }).catch(function(err) {
-            return { running: false };
+            var out = (res.stdout || '').trim();
+            if (out.indexOf('running') > -1) {
+                sel._statusEl.textContent = '● Запущен';
+                sel._statusEl.style.color = '#22c55e';
+                sel._startBtn.textContent = '✓ Работает';
+                sel._startBtn.disabled = false;
+                sel._stopBtn.disabled = false;
+            } else {
+                sel._statusEl.textContent = '○ Остановлен';
+                sel._statusEl.style.color = '#666';
+                sel._startBtn.textContent = 'Запустить';
+                sel._startBtn.disabled = false;
+                sel._stopBtn.disabled = true;
+            }
+        }).catch(function() {
+            sel._statusEl.textContent = '○ Остановлен';
+            sel._statusEl.style.color = '#666';
+            sel._startBtn.textContent = 'Запустить';
+            sel._startBtn.disabled = false;
+            sel._stopBtn.disabled = true;
         });
     },
 
     render: function(data) {
-        var statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
-        var self = this;
+        var sel = {};
+        sel._statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
 
-        var startBtn = E('button', {
+        sel._startBtn = E('button', {
             'class': 'cbi-button cbi-button-add',
             'click': function(ev) {
-                startBtn.disabled = true;
-                startBtn.textContent = 'Запуск...';
-                statusEl.style.color = '#1a73e8';
-                statusEl.textContent = 'Запуск...';
+                sel._startBtn.disabled = true;
+                sel._startBtn.textContent = 'Запуск...';
+                sel._statusEl.style.color = '#1a73e8';
+                sel._statusEl.textContent = 'Запуск...';
 
                 callExec({
-                    command: '/etc/init.d/iptv-manager',
+                    command: '/etc/iptv/IPTV-Manager.sh',
                     params: ['start']
                 }).then(function() {
                     return new Promise(function(r) { setTimeout(r, 3000); });
                 }).then(function() {
-                    return self._isRunning();
-                }).then(function(ok) {
-                    _setStatus(ok);
+                    return sel._checkStatus(sel);
                 }).catch(function() {
-                    _setStatus({running: false});
+                    sel._checkStatus(sel);
                 });
             }
         }, 'Запустить');
 
-        var stopBtn = E('button', {
+        sel._stopBtn = E('button', {
             'class': 'cbi-button cbi-button-negative',
             'click': function(ev) {
-                stopBtn.disabled = true;
-                stopBtn.textContent = 'Остановка...';
-                statusEl.style.color = '#ef4444';
-                statusEl.textContent = 'Остановка...';
+                sel._stopBtn.disabled = true;
+                sel._stopBtn.textContent = 'Остановка...';
+                sel._statusEl.style.color = '#ef4444';
+                sel._statusEl.textContent = 'Остановка...';
 
                 callExec({
-                    command: '/bin/sh',
-                    params: ['-c', '/etc/init.d/iptv-manager stop; kill -9 $(pgrep -f 8082) 2>/dev/null; sleep 1']
+                    command: '/etc/iptv/IPTV-Manager.sh',
+                    params: ['stop']
                 }).then(function() {
                     return new Promise(function(r) { setTimeout(r, 1500); });
                 }).then(function() {
-                    return self._isRunning();
-                }).then(function(ok) {
-                    _setStatus(ok);
+                    return sel._checkStatus(sel);
                 }).catch(function() {
-                    _setStatus({running: false});
+                    sel._checkStatus(sel);
                 });
             }
         }, 'Остановить');
 
-        function _setStatus(result) {
-            if (result.running) {
-                statusEl.textContent = '● Запущен';
-                statusEl.style.color = '#22c55e';
-                startBtn.textContent = '✓ Работает';
-                startBtn.disabled = false;
-                stopBtn.disabled = false;
-            } else {
-                statusEl.textContent = '○ Остановлен';
-                statusEl.style.color = '#666';
-                startBtn.textContent = 'Запустить';
-                startBtn.disabled = false;
-                stopBtn.disabled = true;
-            }
-        }
-
         var btnRow = E('div', {
             'style': 'display:flex;gap:10px;flex-wrap:wrap;align-items:center'
-        }, [startBtn, stopBtn, statusEl]);
+        }, [sel._startBtn, sel._stopBtn, sel._statusEl]);
 
-        self._isRunning().then(function(ok) {
-            _setStatus(ok);
-        }).catch(function() {
-            _setStatus({running: false});
-        });
+        setTimeout(function() { sel._checkStatus(sel); }, 500);
 
         return E([
             E('h2', {}, 'Сервер'),

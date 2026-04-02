@@ -2481,22 +2481,49 @@ menu_update() {
 # Handle start/stop commands (for LuCI init script and manual calls)
 case "$1" in
     start)
-        stop_http_server
-        sleep 0.5
+        echo "=== Запуск IPTV-сервера ==="
+        # Kill any existing uhttpd on port 8082
+        kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 0.5
+        # Generate CGI and prepare dirs
         generate_cgi
-        # Start uhttpd in background (not -f mode)
         mkdir -p /www/iptv/cgi-bin
         [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
+        # Start in background with nohup
         nohup uhttpd -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
         sleep 2
+        # Save PID
         pgrep -f "uhttpd.*8082" | head -1 > /var/run/iptv-httpd.pid 2>/dev/null
+        echo "Сервер запущен (PID: $(cat /var/run/iptv-httpd.pid 2>/dev/null))"
         exit 0
         ;;
-    stop) stop_http_server; stop_scheduler; exit 0 ;;
+    stop)
+        echo "=== Остановка IPTV-сервера ==="
+        kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null
+        rm -f /var/run/iptv-httpd.pid
+        echo "Сервер остановлен"
+        exit 0
+        ;;
+    status)
+        # Check by PID first
+        if [ -f /var/run/iptv-httpd.pid ] && kill -0 "$(cat /var/run/iptv-httpd.pid 2>/dev/null)" 2>/dev/null; then
+            echo "running"
+        else
+            # Fallback: check if port 8082 responds
+            if wget -q -O /dev/null --timeout=2 "http://127.0.0.1:8082/" 2>/dev/null; then
+                echo "running"
+            else
+                echo "stopped"
+            fi
+        fi
+        exit 0
+        ;;
+    restart)
+        "$0" stop; sleep 1; "$0" start; exit 0 ;;
     --server)
-        # Called by init script without interactive menu
-        stop_http_server; sleep 0.5; generate_cgi; exit 0
+        # Called by init script without interactive menu - for procd compatibility
+        stop_http_server 2>/dev/null; sleep 0.5; generate_cgi; exit 0
         ;;
 esac
+
 
 while true; do show_menu; done
