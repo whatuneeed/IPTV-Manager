@@ -18,7 +18,7 @@ return view.extend({
     _isRunning: function() {
         return callExec({
             command: '/bin/sh',
-            params: ['-c', 'wget -q -O /dev/null --timeout=2 http://127.0.0.1:8082/ 2>/dev/null']
+            params: ['-c', 'wget -q -O /dev/null --timeout=2 http://192.168.1.1:8082/cgi-bin/admin.cgi 2>/dev/null']
         }).then(function(res) {
             return res.code === 0;
         }).catch(function() {
