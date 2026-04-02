@@ -2081,6 +2081,40 @@ INITEOF
     fi
     echo ""
 
+    echo -e "${YELLOW}── Шаг 6/6: Интеграция в LuCI ────────────────${NC}"
+    echo_info "Установить плагин в веб-интерфейс OpenWrt?"
+    echo_info "Появится раздел Services → IPTV Manager с нативными настройками"
+    echo -e "  ${CYAN}1) Да, установить${NC}"
+    echo -e "  ${CYAN}2) Нет, пропустить${NC}"
+    echo -ne "${YELLOW}> ${NC}"
+    read luci_choice </dev/tty
+    if [ "$luci_choice" = "1" ]; then
+        echo_info "Скачиваем LuCI-плагин..."
+        local luci_base="https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/luci-app-iptv-manager"
+        local luci_dirs="luasrc/controller luasrc/model/cbi/iptv-manager luasrc/view/iptv-manager root/usr/share/luci/menu.d root/usr/share/rpcd/acl.d root/etc/uci-defaults"
+        local luci_files="luasrc/controller/iptv-manager.lua luasrc/model/cbi/iptv-manager/playlist.lua luasrc/model/cbi/iptv-manager/epg.lua luasrc/model/cbi/iptv-manager/schedule.lua luasrc/model/cbi/iptv-manager/security.lua luasrc/view/iptv-manager/channels.htm luasrc/view/iptv-manager/player.htm root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
+        local ok=0
+        for f in $luci_files; do
+            local dest="/$f"
+            mkdir -p "$(dirname "$dest")"
+            if wget -q --timeout=10 --no-check-certificate -O "$dest" "$luci_base/$f" 2>/dev/null; then
+                ok=$((ok + 1))
+            fi
+        done
+        if [ "$ok" -ge 8 ]; then
+            chmod +x /etc/uci-defaults/99-luci-iptv-manager 2>/dev/null
+            /etc/uci-defaults/99-luci-iptv-manager 2>/dev/null
+            /etc/init.d/rpcd restart 2>/dev/null
+            echo_success "LuCI-плагин установлен! ($ok/$ok файлов)"
+            echo_info "Раздел появится в Services → IPTV Manager"
+        else
+            echo_error "Установлено $ok/11 файлов. Проверьте интернет-соединение."
+        fi
+    else
+        echo_info "Пропущено"
+    fi
+    echo ""
+
     echo_color "Настройка завершена!"
     echo_info "Запускаем сервер..."
     start_http_server
