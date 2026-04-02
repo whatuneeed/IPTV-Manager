@@ -49,7 +49,7 @@ return view.extend({
                 }).then(function(ok) {
                     _setStatus(ok);
                 }).catch(function() {
-                    _setStatus(false);
+                    _setStatus({running: false});
                 });
             }
         }, 'Запустить');
@@ -64,7 +64,7 @@ return view.extend({
 
                 callExec({
                     command: '/bin/sh',
-                    params: ['-c', 'kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; rm -f /var/run/iptv-httpd.pid']
+                    params: ['-c', '/etc/init.d/iptv-manager stop && killall -9 uhttpd 2>/dev/null && sleep 1']
                 }).then(function() {
                     return new Promise(function(r) { setTimeout(r, 1500); });
                 }).then(function() {
@@ -72,7 +72,7 @@ return view.extend({
                 }).then(function(ok) {
                     _setStatus(ok);
                 }).catch(function() {
-                    _setStatus(false);
+                    _setStatus({running: false});
                 });
             }
         }, 'Остановить');
@@ -101,7 +101,7 @@ return view.extend({
         self._isRunning().then(function(ok) {
             _setStatus(ok);
         }).catch(function() {
-            _setStatus(false);
+            _setStatus({running: false});
         });
 
         return E([
