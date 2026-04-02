@@ -1,9 +1,9 @@
 #!/bin/sh
 # ==========================================
-# IPTV Manager для OpenWrt v3.8
+# IPTV Manager для OpenWrt v3.9
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.8"
+IPTV_MANAGER_VERSION="3.9"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -134,7 +134,7 @@ generate_cgi() {
     # --- CGI файл (без раскрытия переменных) ---
     cat > /www/iptv/cgi-bin/admin.cgi << 'CGIEOF'
 #!/bin/sh
-IPTV_MANAGER_VERSION="3.8"
+IPTV_MANAGER_VERSION="3.9"
 PL="/etc/iptv/playlist.m3u"
 EC="/etc/iptv/iptv.conf"
 EF="/etc/iptv/epg.xml"
@@ -1471,17 +1471,12 @@ stop_scheduler() { kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/nu
 # ==========================================
 start_http_server() {
     mkdir -p /www/iptv/cgi-bin
-    cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u
-    [ -f "$EPG_FILE" ] && cp "$EPG_FILE" /www/iptv/epg.xml
+    [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
+    [ -f "$EPG_FILE" ] && cp "$EPG_FILE" /www/iptv/epg.xml || touch /www/iptv/epg.xml
     generate_cgi
     if [ -f "$HTTPD_PID" ] && kill -0 $(cat "$HTTPD_PID") 2>/dev/null; then
         echo_success "Сервер обновлён: http://$LAN_IP:$IPTV_PORT/"
         return
-    fi
-    if [ ! -f "$PLAYLIST_FILE" ]; then
-        echo_error "Плейлист не найден!"
-        PAUSE
-        return 1
     fi
     kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
     sleep 1
@@ -1745,6 +1740,212 @@ uninstall() {
     echo_info "Для выхода введите Enter"
 }
 
+first_setup() {
+    echo_color "Первоначальная настройка"
+    echo_info "Пошаговый мастер настроит IPTV Manager на вашем роутере"
+    echo ""
+
+    echo -e "${YELLOW}── Шаг 1/5: Установка файлов ─────────────────${NC}"
+    echo_info "Создаём необходимые файлы и директории..."
+    mkdir -p /etc/iptv /www/iptv/cgi-bin
+    [ -f "$CONFIG_FILE" ] || touch "$CONFIG_FILE"
+    [ -f "$EPG_CONFIG" ] || touch "$EPG_CONFIG"
+    [ -f "$SCHEDULE_FILE" ] || touch "$SCHEDULE_FILE"
+    [ -f "$FAVORITES_FILE" ] || echo "[]" > "$FAVORITES_FILE"
+    [ -f "$SECURITY_FILE" ] || printf 'ADMIN_USER=""\nADMIN_PASS=""\nAPI_TOKEN=""\n' > "$SECURITY_FILE"
+    echo_success "Файлы созданы"
+    echo ""
+
+    echo -e "${YELLOW}── Шаг 2/5: Плейлист ─────────────────────────${NC}"
+    echo_info "Выберите источник плейлиста:"
+    echo -e "  ${CYAN}1) Загрузить по ссылке${NC}"
+    echo -e "  ${CYAN}2) Загрузить из файла${NC}"
+    echo -e "  ${CYAN}3) Настроить провайдера${NC}"
+    echo -e "  ${CYAN}4) Пропустить (настрою позже в админке)${NC}"
+    echo -ne "${YELLOW}> ${NC}"
+    read pl_choice </dev/tty
+    case "$pl_choice" in
+        1)
+            echo -ne "${YELLOW}URL плейлиста: ${NC}"
+            read PLAYLIST_URL </dev/tty
+            if [ -n "$PLAYLIST_URL" ]; then
+                echo_info "Скачиваем..."
+                if wget $(wget_opt) -O "$PLAYLIST_FILE" "$PLAYLIST_URL" 2>/dev/null && [ -s "$PLAYLIST_FILE" ]; then
+                    local ch=$(get_ch)
+                    echo_success "Загружен! Каналов: $ch"
+                    save_config "url" "$PLAYLIST_URL" ""
+                    local now=$(get_ts)
+                    save_sched "0" "0" "$now" ""
+                else
+                    echo_error "Не удалось скачать! Настроите позже в админке."
+                    touch "$PLAYLIST_FILE"
+                fi
+            else
+                echo_info "Пропущено"
+                touch "$PLAYLIST_FILE"
+            fi ;;
+        2)
+            echo -ne "${YELLOW}Путь к файлу: ${NC}"
+            read FP </dev/tty
+            if [ -n "$FP" ] && [ -f "$FP" ]; then
+                cp "$FP" "$PLAYLIST_FILE"
+                local ch=$(get_ch)
+                echo_success "Загружен! Каналов: $ch"
+                save_config "file" "" "$FP"
+                local now=$(get_ts)
+                save_sched "0" "0" "$now" ""
+            else
+                echo_info "Пропущено"
+                touch "$PLAYLIST_FILE"
+            fi ;;
+        3)
+            echo -ne "${YELLOW}Название провайдера: ${NC}"
+            read PN </dev/tty
+            echo -ne "${YELLOW}Сервер (домен или IP): ${NC}"
+            read PSRV </dev/tty
+            echo -ne "${YELLOW}Логин: ${NC}"
+            read PL2 </dev/tty
+            echo -ne "${YELLOW}Пароль: ${NC}"
+            stty -echo
+            read PP </dev/tty
+            stty echo
+            echo ""
+            if [ -n "$PN" ] && [ -n "$PL2" ] && [ -n "$PP" ]; then
+                [ -z "$PSRV" ] && PSRV="$PN"
+                local pu="http://$PSRV/get.php?username=$PL2&password=$PP&type=m3u_plus&output=ts"
+                echo_info "Получаем плейлист..."
+                if wget -q --timeout=15 -O "$PLAYLIST_FILE" "$pu" 2>/dev/null && [ -s "$PLAYLIST_FILE" ]; then
+                    local ch=$(get_ch)
+                    echo_success "Загружен! Каналов: $ch"
+                    save_config "provider" "$pu" "$PN"
+                    printf 'PROVIDER_NAME=%s\nPROVIDER_LOGIN=%s\nPROVIDER_PASS=%s\nPROVIDER_SERVER=%s\n' "$PN" "$PL2" "$PP" "$PSRV" > "$PROVIDER_CONFIG"
+                    local now=$(get_ts)
+                    save_sched "0" "0" "$now" ""
+                else
+                    echo_error "Не удалось получить! Настроите позже в админке."
+                    touch "$PLAYLIST_FILE"
+                fi
+            else
+                echo_info "Пропущено"
+                touch "$PLAYLIST_FILE"
+            fi ;;
+        *)
+            echo_info "Пропущено"
+            touch "$PLAYLIST_FILE" ;;
+    esac
+    echo ""
+
+    echo -e "${YELLOW}── Шаг 3/5: Телепрограмма (EPG) ──────────────${NC}"
+    local builtin=$(detect_builtin_epg)
+    if [ -n "$builtin" ]; then
+        echo_info "В плейлисте найден встроенный EPG: $builtin"
+        echo -e "  ${CYAN}1) Скачать встроенный EPG${NC}"
+        echo -e "  ${CYAN}2) Указать свою ссылку${NC}"
+        echo -e "  ${CYAN}3) Пропустить${NC}"
+        echo -ne "${YELLOW}> ${NC}"
+        read epg_choice </dev/tty
+        case "$epg_choice" in
+            1)
+                echo_info "Скачиваем..."
+                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$builtin" 2>/dev/null && [ -s "$EPG_FILE" ]; then
+                    echo_success "EPG загружен! Размер: $(file_size "$EPG_FILE")"
+                    printf 'EPG_URL="%s"\n' "$builtin" > "$EPG_CONFIG"
+                else
+                    echo_info "Не удалось скачать"
+                fi ;;
+            2)
+                echo -ne "${YELLOW}EPG URL: ${NC}"
+                read EPG_URL </dev/tty
+                if [ -n "$EPG_URL" ]; then
+                    echo_info "Скачиваем..."
+                    if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
+                        echo_success "EPG загружен! Размер: $(file_size "$EPG_FILE")"
+                        printf 'EPG_URL="%s"\n' "$EPG_URL" > "$EPG_CONFIG"
+                    else
+                        echo_info "Не удалось скачать"
+                    fi
+                fi ;;
+        esac
+    else
+        echo_info "Встроенный EPG не найден"
+        echo -e "  ${CYAN}1) Указать ссылку на EPG${NC}"
+        echo -e "  ${CYAN}2) Пропустить${NC}"
+        echo -ne "${YELLOW}> ${NC}"
+        read epg_choice </dev/tty
+        case "$epg_choice" in
+            1)
+                echo -ne "${YELLOW}EPG URL: ${NC}"
+                read EPG_URL </dev/tty
+                if [ -n "$EPG_URL" ]; then
+                    echo_info "Скачиваем..."
+                    if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
+                        echo_success "EPG загружен! Размер: $(file_size "$EPG_FILE")"
+                        printf 'EPG_URL="%s"\n' "$EPG_URL" > "$EPG_CONFIG"
+                    else
+                        echo_info "Не удалось скачать"
+                    fi
+                fi ;;
+        esac
+    fi
+    echo ""
+
+    echo -e "${YELLOW}── Шаг 4/5: Расписание обновлений ────────────${NC}"
+    echo_info "Как часто обновлять плейлист и EPG?"
+    echo -e "  ${CYAN}0) Выкл  1) Каждый час  2) Каждые 6ч  3) Каждые 12ч  4) Раз в сутки${NC}"
+    echo -ne "${YELLOW}Плейлист (0-4) [0]: ${NC}"
+    read pi </dev/tty
+    case "$pi" in 1) PLAYLIST_INTERVAL=1 ;; 2) PLAYLIST_INTERVAL=6 ;; 3) PLAYLIST_INTERVAL=12 ;; 4) PLAYLIST_INTERVAL=24 ;; *) PLAYLIST_INTERVAL=0 ;; esac
+    echo -ne "${YELLOW}EPG (0-4) [0]: ${NC}"
+    read ei </dev/tty
+    case "$ei" in 1) EPG_INTERVAL=1 ;; 2) EPG_INTERVAL=6 ;; 3) EPG_INTERVAL=12 ;; 4) EPG_INTERVAL=24 ;; *) EPG_INTERVAL=0 ;; esac
+    save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$(get_ts)" "$(get_ts)"
+    if [ "$PLAYLIST_INTERVAL" -gt 0 ] || [ "$EPG_INTERVAL" -gt 0 ]; then
+        start_scheduler
+        echo_success "Расписание настроено, планировщик запущен"
+    else
+        echo_success "Расписание отключено"
+    fi
+    echo ""
+
+    echo -e "${YELLOW}── Шаг 5/5: Автозапуск ───────────────────────${NC}"
+    echo_info "Запускать IPTV Manager при старте роутера?"
+    echo -e "  ${CYAN}1) Да${NC}"
+    echo -e "  ${CYAN}2) Нет${NC}"
+    echo -ne "${YELLOW}> ${NC}"
+    read as_choice </dev/tty
+    if [ "$as_choice" = "1" ]; then
+        if [ ! -f /etc/init.d/iptv-manager ]; then
+            cat > /etc/init.d/iptv-manager <<'INITEOF'
+#!/bin/sh /etc/rc.common
+START=99
+start() {
+    mkdir -p /www/iptv/cgi-bin
+    [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u
+    [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml
+    [ -f /etc/iptv/IPTV-Manager.sh ] && . /etc/iptv/IPTV-Manager.sh 2>/dev/null
+    uhttpd -f -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &
+    [ -f /etc/iptv/schedule.conf ] && { . /etc/iptv/schedule.conf; [ "${PLAYLIST_INTERVAL:-0}" -gt 0 ] || [ "${EPG_INTERVAL:-0}" -gt 0 ] && /bin/sh /tmp/iptv-scheduler.sh &; }
+}
+stop() { kill $(pgrep -f "uhttpd.*8082" 2>/dev/null) 2>/dev/null; kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/null; }
+INITEOF
+            chmod +x /etc/init.d/iptv-manager
+            /etc/init.d/iptv-manager enable 2>/dev/null
+            echo_success "Автозапуск включён"
+        else
+            echo_info "Автозапуск уже включён"
+        fi
+    else
+        echo_info "Автозапуск отключён"
+    fi
+    echo ""
+
+    echo_color "Настройка завершена!"
+    echo_info "Запускаем сервер..."
+    start_http_server
+    echo ""
+    echo_success "Готово! Откройте: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
+}
+
 check_for_updates() {
     echo_color "Проверка обновлений"
     echo_info "Текущая версия: $IPTV_MANAGER_VERSION"
@@ -1879,11 +2080,12 @@ print_header() {
 show_menu() {
     print_header
     echo -e "${YELLOW}── Главное меню ──────────────────────${NC}"
-    echo -e "${CYAN} 1) ${GREEN}Плейлист${NC}"
-    echo -e "${CYAN} 2) ${GREEN}Телепрограмма (EPG)${NC}"
-    echo -e "${CYAN} 3) ${GREEN}Сервер${NC}"
-    echo -e "${CYAN} 4) ${GREEN}Настройки${NC}"
-    echo -e "${CYAN} 5) ${GREEN}Обновление / Установка${NC}"
+    echo -e "${CYAN} 1) ${GREEN}Первоначальная настройка${NC}"
+    echo -e "${CYAN} 2) ${GREEN}Плейлист${NC}"
+    echo -e "${CYAN} 3) ${GREEN}Телепрограмма (EPG)${NC}"
+    echo -e "${CYAN} 4) ${GREEN}Сервер${NC}"
+    echo -e "${CYAN} 5) ${GREEN}Настройки${NC}"
+    echo -e "${CYAN} 6) ${GREEN}Обновление / Установка${NC}"
     echo ""
     echo -e "${RED} 0) ${RED}Удалить IPTV Manager${NC}"
     echo ""
@@ -1892,8 +2094,8 @@ show_menu() {
     echo -ne "${YELLOW}> ${NC}"
     read c </dev/tty
     case "$c" in
-        1) menu_playlist ;; 2) menu_epg ;; 3) menu_server ;;
-        4) menu_settings ;; 5) menu_update ;;
+        1) first_setup ;; 2) menu_playlist ;; 3) menu_epg ;; 4) menu_server ;;
+        5) menu_settings ;; 6) menu_update ;;
         0) uninstall ;; *) echo_info "Выход"; exit 0 ;;
     esac
     PAUSE
