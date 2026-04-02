@@ -17,31 +17,21 @@ return view.extend({
 
     render: function(data) {
         var statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
-        var self = this;
 
         var startBtn = E('button', {
             'class': 'cbi-button cbi-button-add',
             'click': function(ev) {
                 startBtn.disabled = true;
                 startBtn.textContent = 'Запуск...';
-                statusEl.style.color = '#1a73e8';
-                statusEl.textContent = 'Запуск...';
-
                 callExec({
                     command: '/etc/init.d/iptv-manager',
                     params: ['start']
-                }).then(function(res) {
-                    statusEl.textContent = '● Запущен';
-                    statusEl.style.color = '#22c55e';
-                    startBtn.textContent = '✓ Работает';
-                    stopBtn.disabled = false;
-                }).catch(function(err) {
-                    statusEl.textContent = '● Запущен';
-                    statusEl.style.color = '#22c55e';
-                    startBtn.textContent = '✓ Работает';
-                    stopBtn.disabled = false;
-                }).finally(function() {
-                    startBtn.disabled = false;
+                }).then(function() {
+                    return new Promise(function(r) { setTimeout(r, 2000); });
+                }).then(function() {
+                    return checkNow();
+                }).catch(function() {
+                    checkNow();
                 });
             }
         }, 'Запустить');
@@ -51,29 +41,51 @@ return view.extend({
             'click': function(ev) {
                 stopBtn.disabled = true;
                 stopBtn.textContent = 'Остановка...';
-                statusEl.style.color = '#ef4444';
-                statusEl.textContent = 'Остановка...';
-
                 callExec({
                     command: '/etc/init.d/iptv-manager',
                     params: ['stop']
-                }).then(function(res) {
-                    statusEl.textContent = '○ Остановлен';
-                    statusEl.style.color = '#666';
-                    startBtn.textContent = 'Запустить';
-                }).catch(function(err) {
-                    statusEl.textContent = '○ Остановлен';
-                    statusEl.style.color = '#666';
-                    startBtn.textContent = 'Запустить';
-                }).finally(function() {
-                    stopBtn.disabled = true;
+                }).then(function() {
+                    return new Promise(function(r) { setTimeout(r, 2000); });
+                }).then(function() {
+                    return checkNow();
+                }).catch(function() {
+                    checkNow();
                 });
             }
         }, 'Остановить');
 
+        function checkNow() {
+            return callExec({
+                command: '/bin/sh',
+                params: ['-c', 'pgrep -f 8082']
+            }).then(function(res) {
+                var out = ((res && res.stdout) || '').trim();
+                if (out.length > 0) {
+                    statusEl.textContent = '● Запущен';
+                    statusEl.style.color = '#22c55e';
+                    startBtn.textContent = '✓ Работает';
+                    stopBtn.disabled = false;
+                } else {
+                    statusEl.textContent = '○ Остановлен';
+                    statusEl.style.color = '#666';
+                    startBtn.textContent = 'Запустить';
+                    stopBtn.disabled = true;
+                }
+            }).catch(function() {
+                statusEl.textContent = '○ Остановлен';
+                statusEl.style.color = '#666';
+                startBtn.textContent = 'Запустить';
+                stopBtn.disabled = true;
+            }).finally(function() {
+                startBtn.disabled = false;
+            });
+        }
+
         var btnRow = E('div', {
             'style': 'display:flex;gap:10px;flex-wrap:wrap;align-items:center'
         }, [startBtn, stopBtn, statusEl]);
+
+        setTimeout(function() { checkNow(); }, 500);
 
         return E([
             E('h2', {}, 'Сервер'),
