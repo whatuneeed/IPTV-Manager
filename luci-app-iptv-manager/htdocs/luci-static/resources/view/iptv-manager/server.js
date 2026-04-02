@@ -1,8 +1,6 @@
 'use strict';
 'require view';
 'require uci';
-'require ui';
-'require poll';
 'require fs';
 
 return view.extend({
@@ -14,7 +12,6 @@ return view.extend({
         var lan_ip = uci.get('network', 'lan', 'ipaddr') || '192.168.1.1';
         var port = '8082';
         var baseUrl = 'http://' + lan_ip + ':' + port;
-        var adminUrl = baseUrl + '/cgi-bin/admin.cgi';
 
         var statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
 
@@ -26,28 +23,22 @@ return view.extend({
                 statusEl.style.color = '#1a73e8';
                 statusEl.textContent = 'Запуск...';
 
-                // Use ubus file.exec to run the start command
-                L.ubus.call('file', 'exec', {
-                    command: '/bin/sh',
-                    params: ['-c', '/etc/init.d/iptv-manager start >/dev/null 2>&1 &']
-                }).then(function(res) {
-                    // Wait then check
-                    setTimeout(function() {
-                        checkStatus();
-                    }, 3000);
-                }).catch(function(err) {
-                    // Fallback: use uhttpd directly
-                    L.ubus.call('file', 'exec', {
-                        command: 'uhttpd',
-                        params: ['-f', '-p', '0.0.0.0:' + port, '-h', '/www/iptv', '-x', '/www/iptv/cgi-bin', '-i', '.cgi=/bin/sh']
-                    }).then(function(res) {
-                        setTimeout(checkStatus, 3000);
-                    }).catch(function(err2) {
-                        statusEl.textContent = '✗ Ошибка';
-                        statusEl.style.color = '#ef4444';
-                        startBtn.textContent = 'Запустить';
-                        startBtn.disabled = false;
-                    });
+                fs.exec_direct('/bin/sh', ['-c',
+                    'mkdir -p /www/iptv; ' +
+                    'mkdir -p /www/iptv/cgi-bin; ' +
+                    'echo "#EXTM3U" > /www/iptv/playlist.m3u 2>/dev/null; ' +
+                    'cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null; ' +
+                    'kill $(pgrep -f "uhttpd.*:8082") 2>/dev/null; ' +
+                    'sleep 1; ' +
+                    'uhttpd -p 0.0.0.0:' + port + ' -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" & ' +
+                    'sleep 1'
+                ]).then(function() {
+                    return checkStatus(2000);
+                }).catch(function(e) {
+                    statusEl.textContent = '✗ Ошибка';
+                    statusEl.style.color = '#ef4444';
+                    startBtn.textContent = 'Запустить';
+                    startBtn.disabled = false;
                 });
             }
         }, 'Запустить');
@@ -60,12 +51,11 @@ return view.extend({
                 statusEl.style.color = '#ef4444';
                 statusEl.textContent = 'Остановка...';
 
-                // Kill uhttpd on port 8082 via ubus
-                L.ubus.call('file', 'exec', {
-                    command: '/bin/sh',
-                    params: ['-c', "kill $(pgrep -f 'uhttpd.*:" + port + "') 2>/dev/null; rm -f /var/run/iptv-httpd.pid"]
-                }).then(function(res) {
-                    checkStatus();
+                fs.exec_direct('/bin/sh', ['-c',
+                    'kill $(pgrep -f "uhttpd.*:8082") 2>/dev/null; ' +
+                    'rm -f /var/run/iptv-httpd.pid'
+                ]).then(function() {
+                    return checkStatus(1000);
                 }).catch(function() {
                     statusEl.textContent = '✗ Ошибка';
                     statusEl.style.color = '#ef4444';
@@ -75,35 +65,34 @@ return view.extend({
             }
         }, 'Остановить');
 
-        function checkStatus() {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', adminUrl, true);
-            xhr.timeout = 3000;
-            xhr.onload = function() {
+        function checkStatus(delay) {
+            var d = delay || 0;
+            return new Promise(function(resolve) {
+                setTimeout(resolve, d);
+            }).then(function() {
+                return fs.access('/var/run/iptv-httpd.pid');
+            }).then(function() {
                 statusEl.textContent = '● Запущен';
                 statusEl.style.color = '#22c55e';
                 startBtn.textContent = '✓ Работает';
                 startBtn.disabled = false;
                 stopBtn.disabled = false;
                 stopBtn.textContent = 'Остановить';
-            };
-            xhr.onerror = xhr.ontimeout = function() {
+            }).catch(function() {
                 statusEl.textContent = '○ Остановлен';
                 statusEl.style.color = '#666';
                 startBtn.textContent = 'Запустить';
                 startBtn.disabled = false;
                 stopBtn.disabled = true;
                 stopBtn.textContent = 'Остановить';
-            };
-            xhr.send();
+            });
         }
 
         var btnRow = E('div', {
             'style': 'display:flex;gap:10px;flex-wrap:wrap;align-items:center'
         }, [startBtn, stopBtn, statusEl]);
 
-        // Initial status
-        setTimeout(checkStatus, 500);
+        checkStatus(500);
 
         return E([
             E('h2', {}, 'Сервер'),
