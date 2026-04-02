@@ -10,15 +10,17 @@ var callExec = rpc.declare({
     expect: {}
 });
 
+var IPTV_CMD = '/etc/iptv/IPTV-Manager.sh';
+
 return view.extend({
     load: function() {
         return L.resolveDefault(uci.load('iptv'), {});
     },
 
     _checkStatus: function(sel) {
-        return callExec({
-            command: '/etc/iptv/IPTV-Manager.sh',
-            params: ['status']
+        callExec({
+            command: '/bin/sh',
+            params: [IPTV_CMD, 'status']
         }).then(function(res) {
             var out = (res.stdout || '').trim();
             if (out.indexOf('running') > -1) {
@@ -56,12 +58,12 @@ return view.extend({
                 sel._statusEl.textContent = 'Запуск...';
 
                 callExec({
-                    command: '/etc/iptv/IPTV-Manager.sh',
-                    params: ['start']
+                    command: '/bin/sh',
+                    params: [IPTV_CMD, 'start']
                 }).then(function() {
-                    return new Promise(function(r) { setTimeout(r, 3000); });
+                    return new Promise(function(r) { setTimeout(r, 4000); });
                 }).then(function() {
-                    return sel._checkStatus(sel);
+                    sel._checkStatus(sel);
                 }).catch(function() {
                     sel._checkStatus(sel);
                 });
@@ -77,12 +79,12 @@ return view.extend({
                 sel._statusEl.textContent = 'Остановка...';
 
                 callExec({
-                    command: '/etc/iptv/IPTV-Manager.sh',
-                    params: ['stop']
+                    command: '/bin/sh',
+                    params: [IPTV_CMD, 'stop']
                 }).then(function() {
-                    return new Promise(function(r) { setTimeout(r, 1500); });
+                    return new Promise(function(r) { setTimeout(r, 2000); });
                 }).then(function() {
-                    return sel._checkStatus(sel);
+                    sel._checkStatus(sel);
                 }).catch(function() {
                     sel._checkStatus(sel);
                 });
