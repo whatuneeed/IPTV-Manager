@@ -2483,16 +2483,15 @@ case "$1" in
     start)
         echo "=== Запуск IPTV-сервера ==="
         # Kill any existing uhttpd on port 8082
-        kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 0.5
+        kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 1
         # Generate CGI and prepare dirs
         generate_cgi
         mkdir -p /www/iptv/cgi-bin
         [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
         # Start in background with nohup
         nohup uhttpd -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
-        sleep 2
-        # Save PID
-        pgrep -f "uhttpd.*8082" | head -1 > /var/run/iptv-httpd.pid 2>/dev/null
+        echo $! > /var/run/iptv-httpd.pid
+        sleep 3
         echo "Сервер запущен (PID: $(cat /var/run/iptv-httpd.pid 2>/dev/null))"
         exit 0
         ;;
