@@ -1,9 +1,9 @@
 #!/bin/sh
 # ==========================================
-# IPTV Manager для OpenWrt v3.10
+# IPTV Manager для OpenWrt v3.11
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.10"
+IPTV_MANAGER_VERSION="3.11"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -12,7 +12,7 @@ IPTV_DIR="/etc/iptv"
 PLAYLIST_FILE="$IPTV_DIR/playlist.m3u"
 CONFIG_FILE="$IPTV_DIR/iptv.conf"
 PROVIDER_CONFIG="$IPTV_DIR/provider.conf"
-EPG_FILE="/tmp/iptv-epg.xml"
+EPG_GZ="/tmp/iptv-epg.xml.gz"
 EPG_CONFIG="$IPTV_DIR/epg.conf"
 SCHEDULE_FILE="$IPTV_DIR/schedule.conf"
 FAVORITES_FILE="$IPTV_DIR/favorites.json"
@@ -64,7 +64,7 @@ generate_cgi() {
     load_config; load_epg; load_sched
     local ch=$(get_ch)
     local psz=$(file_size "$PLAYLIST_FILE")
-    local esz=$(file_size "$EPG_FILE")
+    local esz=$(file_size "$EPG_GZ")
     local purl=""; [ "$PLAYLIST_TYPE" = "url" ] && purl="$PLAYLIST_URL"
     local pname="${PLAYLIST_NAME:-}"
     local eurl=""; [ -n "$EPG_URL" ] && eurl="$EPG_URL"
@@ -93,11 +93,11 @@ generate_cgi() {
         group_opts=$(echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done)
     fi
 
-    # EPG сейчас-играет
+    # EPG сейчас-играет (стриминг из gz, без распаковки)
     local now_ts=$(date '+%Y%m%d%H%M%S' 2>/dev/null)
     local epg_rows=""
-    if [ -f "$EPG_FILE" ]; then
-        epg_rows=$(awk -v now="$now_ts" '
+    if [ -f "$EPG_GZ" ]; then
+        epg_rows=$(gunzip -c "$EPG_GZ" 2>/dev/null | awk -v now="$now_ts" '
         /<programme / {
             s = $0
             st = ""
@@ -121,7 +121,7 @@ generate_cgi() {
             }
             ti = ""
         }
-        ' "$EPG_FILE" 2>/dev/null)
+        ' 2>/dev/null)
     fi
 
     local builtin_epg=$(detect_builtin_epg)
@@ -135,10 +135,10 @@ generate_cgi() {
     # --- CGI файл (без раскрытия переменных) ---
     cat > /www/iptv/cgi-bin/admin.cgi << 'CGIEOF'
 #!/bin/sh
-IPTV_MANAGER_VERSION="3.10"
+IPTV_MANAGER_VERSION="3.11"
 PL="/etc/iptv/playlist.m3u"
 EC="/etc/iptv/iptv.conf"
-EF="/tmp/iptv-epg.xml"
+EGZ="/tmp/iptv-epg.xml.gz"
 EXC="/etc/iptv/epg.conf"
 SC="/etc/iptv/schedule.conf"
 FAV="/etc/iptv/favorites.json"
@@ -246,22 +246,22 @@ if [ -n "$ACTION" ]; then
                 wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$TD" "$EPG_URL" 2>/dev/null && [ -s "$TD" ] && {
                     M=$(hexdump -n 2 -e '2/1 "%02x"' "$TD" 2>/dev/null)
                     if [ "$M" = "1f8b" ]; then
-                        gunzip -c "$TD" > "$EF" 2>/dev/null
+                        cp "$TD" "$EPG_GZ"
                     else
-                        cp "$TD" "$EF"
+                        gzip -c "$TD" > "$EPG_GZ" 2>/dev/null
                     fi
                     rm -f "$TD"
-                    if [ -s "$EF" ]; then
-                        SZ=$(wc -c < "$EF")
-                        cp "$EF" /www/iptv/epg.xml
+                    if [ -f "$EPG_GZ" ] && [ -s "$EPG_GZ" ]; then
+                        SZ=$(wc -c < "$EPG_GZ")
                         SZKB=$((SZ / 1024))
-                        if [ "$((SZ / 1048576))" -gt 10 ] 2>/dev/null; then
-                            printf '{"status":"ok","message":"EPG обновлён! Размер: %s KB. Внимание: EPG >10MB","size":"%s KB","large":true}' "$SZKB" "$SZKB"
+                        SZMB=$((SZ / 1048576))
+                        if [ "$SZMB" -gt 10 ] 2>/dev/null; then
+                            printf '{"status":"ok","message":"EPG обновлён! Размер gz: %s MB. Внимание: >10MB","large":true}' "$SZMB"
                         else
-                            printf '{"status":"ok","message":"EPG обновлён! Размер: %s KB","size":"%s KB","large":false}' "$SZKB" "$SZKB"
+                            printf '{"status":"ok","message":"EPG обновлён! Размер gz: %s KB","large":false}' "$SZKB"
                         fi
                     else
-                        printf '{"status":"error","message":"Ошибка распаковки EPG"}'
+                        printf '{"status":"error","message":"Ошибка сохранения EPG"}'
                     fi
                 } || { rm -f "$TD"; printf '{"status":"error","message":"Ошибка загрузки EPG"}'; }
             else
@@ -289,23 +289,22 @@ if [ -n "$ACTION" ]; then
                 wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$TD" "$NU" 2>/dev/null && [ -s "$TD" ] && {
                     M=$(hexdump -n 2 -e '2/1 "%02x"' "$TD" 2>/dev/null)
                     if [ "$M" = "1f8b" ]; then
-                        gunzip -c "$TD" > "$EF" 2>/dev/null
+                        cp "$TD" "$EPG_GZ"
                     else
-                        cp "$TD" "$EF"
+                        gzip -c "$TD" > "$EPG_GZ" 2>/dev/null
                     fi
                     rm -f "$TD"
-                    if [ -s "$EF" ]; then
-                        SZ=$(wc -c < "$EF")
-                        cp "$EF" /www/iptv/epg.xml
-                        SZMB=$((SZ / 1048576))
+                    if [ -f "$EPG_GZ" ] && [ -s "$EPG_GZ" ]; then
+                        SZ=$(wc -c < "$EPG_GZ")
                         SZKB=$((SZ / 1024))
+                        SZMB=$((SZ / 1048576))
                         if [ "$SZMB" -gt 10 ] 2>/dev/null; then
-                            printf '{"status":"ok","message":"EPG загружен! Размер: %s KB. Внимание: EPG >10MB, рекомендуется EPG_LITE","size":"%s KB","large":true}' "$SZKB" "$SZKB"
+                            printf '{"status":"ok","message":"EPG загружен! Размер gz: %s MB. Внимание: >10MB, рекомендуется lite","large":true}' "$SZMB"
                         else
-                            printf '{"status":"ok","message":"EPG загружен! Размер: %s KB","size":"%s KB","large":false}' "$SZKB" "$SZKB"
+                            printf '{"status":"ok","message":"EPG загружен! Размер gz: %s KB","large":false}' "$SZKB"
                         fi
                     else
-                        printf '{"status":"error","message":"Ошибка распаковки EPG"}'
+                        printf '{"status":"error","message":"Ошибка сохранения EPG"}'
                     fi
                 } || { rm -f "$TD"; printf '{"status":"error","message":"Ошибка загрузки EPG"}'; }
             else
@@ -328,10 +327,10 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"error","message":"Укажите название"}'
             fi ;;
         get_epg)
-            if [ -f "$EF" ]; then
+            if [ -f "$EPG_GZ" ]; then
                 local now_ts=$(date '+%Y%m%d%H%M%S' 2>/dev/null)
-                local rows=$(awk -v now="$now_ts" '
-                BEGIN{printf "[";f=1}
+                local rows=$(gunzip -c "$EPG_GZ" 2>/dev/null | awk -v now="$now_ts" '
+                BEGIN{printf "[";f=1;c=0}
                 /<programme / {
                     s = $0; st = ""; ch = ""
                     if (match(s, /start="[0-9]+/)) st = substr(s, RSTART + 7, RLENGTH - 7)
@@ -352,11 +351,13 @@ if [ -n "$ACTION" ]; then
                         gsub(/"/, "\\\"", ti)
                         gsub(/"/, "\\\"", ch)
                         printf "{\"t\":\"%s:%s\",\"c\":\"%s\",\"p\":\"%s\"}", substr(st,9,2), substr(st,11,2), ch, ti
+                        c++
+                        if(c>=50)exit
                     }
                     ti = ""
                 }
                 END{printf "]"}
-                ' "$EF" 2>/dev/null)
+                ' 2>/dev/null)
                 printf '{"status":"ok","rows":%s}' "$rows"
             else
                 printf '{"status":"ok","rows":[]}'
@@ -451,7 +452,7 @@ CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null || echo 0)
 PSZ="---"
 ESZ="---"
 if [ -f "$PL" ]; then PSZ=$(cat "$PL" | wc -c); PSZ="$((PSZ/1024)) KB"; fi
-if [ -f "$EF" ]; then ESZ=$(cat "$EF" | wc -c); ESZ="$((ESZ/1024)) KB"; fi
+if [ -f "$EGZ" ]; then ESZ=$(cat "$EGZ" | wc -c); ESZ="$((ESZ/1024)) KB"; fi
 PURL=""
 EURL=""
 PI="0"
@@ -477,7 +478,7 @@ GOPTS=$(echo "$GROUPS" | while IFS= read -r g; do [ -n "$g" ] && echo "<option v
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
 EPGROWS=""
-[ -f "$EF" ] && EPGROWS=$(awk '/<programme /{s=$0;if(match(s,/start="[0-9]+/)){st=substr(s,RSTART+7,RLENGTH-7);if(match(s,/channel="[^"]+"/)){ch=substr(s,RSTART+9,RLENGTH-9)}}}/<title/{t=$0;if(match(t,/<title[^>]*>[^<]*<\/title>/)){t=substr(t,RSTART,RLENGTH);gsub(/<[^>]*>/,"",t);ti=t}}/<\/programme>/{if(ti!=""&&ch!=""&&st!=""){printf "<tr><td>%s</td><td>%s</td><td>%s</td></tr>\n",substr(st,9,2)":"substr(st,11,2),ch,ti;c++;if(c>=30)exit}ti=""}' "$EF" 2>/dev/null)
+[ -f "$EGZ" ] && EPGROWS=$(gunzip -c "$EGZ" 2>/dev/null | awk '/<programme /{s=$0;if(match(s,/start="[0-9]+/)){st=substr(s,RSTART+7,RLENGTH-7);if(match(s,/channel="[^"]+"/)){ch=substr(s,RSTART+9,RLENGTH-9)}}}/<title/{t=$0;if(match(t,/<title[^>]*>[^<]*<\/title>/)){t=substr(t,RSTART,RLENGTH);gsub(/<[^>]*>/,"",t);ti=t}}/<\/programme>/{if(ti!=""&&ch!=""&&st!=""){printf "<tr><td>%s</td><td>%s</td><td>%s</td></tr>\n",substr(st,9,2)":"substr(st,11,2),ch,ti;c++;if(c>=30)exit}ti=""}' 2>/dev/null)
 
 groups=""
 [ -f "$PL" ] && groups=$(grep -o 'group-title="[^"]*"' "$PL" | sed 's/group-title="//;s/"//' | sort -u)
@@ -1086,23 +1087,23 @@ function loadChannels(){
 
 function loadEpgMap(){
     var x=new XMLHttpRequest();
-    x.open('GET','/epg.xml',true);
+    x.open('GET',API+'?action=get_epg',true);
     x.onload=function(){
         try{
-            var xml=x.responseXML;
-            if(!xml)return;
-            var now=new Date();
-            var nowStr=now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2)+('0'+now.getHours()).slice(-2)+('0'+now.getMinutes()).slice(-2)+('0'+now.getSeconds()).slice(-2);
-            var progs=xml.getElementsByTagName('programme');
-            for(var i=0;i<progs.length;i++){
-                var p=progs[i];
-                var start=p.getAttribute('start');
-                var stop=p.getAttribute('stop');
-                var ch=p.getAttribute('channel');
-                var titleEl=p.getElementsByTagName('title')[0];
-                var title=titleEl?titleEl.textContent:'';
-                if(start&&stop&&start<=nowStr&&stop>=nowStr&&ch&&title){
-                    epgMap[ch]=title;
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'&&r.rows){
+                var now=new Date();
+                var ns=now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2)+('0'+now.getHours()).slice(-2)+('0'+now.getMinutes()).slice(-2)+('0'+now.getSeconds()).slice(-2);
+                for(var i=0;i<r.rows.length;i++){
+                    var row=r.rows[i];
+                    var parts=row.t.split(':');
+                    var h=parseInt(parts[0])||0,m=parseInt(parts[1])||0;
+                    var progTime=('0'+h).slice(-2)+('0'+m).slice(-2);
+                    var nextH=h;var nextM=m+60;if(nextM>=60){nextH++;nextM-=60}
+                    var nextTime=('0'+(nextH%24)).slice(-2)+('0'+nextM).slice(-2);
+                    if(progTime<=ns.slice(8)&&nextTime>=ns.slice(8)){
+                        epgMap[row.c]=row.p;
+                    }
                 }
             }
         }catch(e){}
@@ -1126,6 +1127,26 @@ loadFavorites();
 HTMLEND
 CGIEOF
     chmod +x /www/iptv/cgi-bin/admin.cgi
+
+    # --- ECG прокси (стримит EPG из gz без распаковки в RAM) ---
+    cat > /www/iptv/cgi-bin/epg.cgi << 'EPGEOF'
+#!/bin/sh
+EGZ="/tmp/iptv-epg.xml.gz"
+if [ -f "$EGZ" ]; then
+    printf 'Content-Type: text/xml; charset=utf-8\r\n\r\n'
+    gunzip -c "$EGZ" 2>/dev/null
+else
+    printf 'Content-Type: text/xml\r\n\r\n'
+    printf '<?xml version="1.0" encoding="UTF-8"?><tv></tv>'
+fi
+EPGEOF
+    chmod +x /www/iptv/cgi-bin/epg.cgi
+
+    # Ссылка /epg.xml → epg.cgi
+    cat > /www/iptv/epg.xml << 'XMLEOF'
+<?xml version="1.0" encoding="UTF-8"?>
+XMLEOF
+
     generate_player
 }
 
@@ -1568,10 +1589,16 @@ while true; do
         L=$(date -d "$EPG_LAST_UPDATE" +%s 2>/dev/null || echo 0)
         [ "$(( (N-L)/3600 ))" -ge "$EPG_INTERVAL" ] && {
             . "$D/epg.conf" 2>/dev/null
-            [ -n "$EPG_URL" ] && wget -q --timeout=30 --no-check-certificate -O "$D/epg.xml" "$EPG_URL" 2>/dev/null && [ -s "$D/epg.xml" ] && {
+            [ -n "$EPG_URL" ] && wget -q --timeout=30 --no-check-certificate -O "$D/epg-dl.tmp" "$EPG_URL" 2>/dev/null && [ -s "$D/epg-dl.tmp" ] && {
+                M=$(hexdump -n 2 -e '2/1 "%02x"' "$D/epg-dl.tmp" 2>/dev/null)
+                if [ "$M" = "1f8b" ]; then
+                    cp "$D/epg-dl.tmp" /tmp/iptv-epg.xml.gz
+                else
+                    gzip -c "$D/epg-dl.tmp" > /tmp/iptv-epg.xml.gz 2>/dev/null
+                fi
                 NT=$(date '+%d.%m.%Y %H:%M')
                 printf 'PLAYLIST_INTERVAL="%s"\nEPG_INTERVAL="%s"\nPLAYLIST_LAST_UPDATE="%s"\nEPG_LAST_UPDATE="%s"\n' "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$NT" > "$D/schedule.conf"
-                cp "$D/epg.xml" /www/iptv/epg.xml 2>/dev/null
+                rm -f "$D/epg-dl.tmp"
             }
         }
     fi
@@ -1589,7 +1616,6 @@ stop_scheduler() { kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/nu
 start_http_server() {
     mkdir -p /www/iptv/cgi-bin
     [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
-    [ -f "$EPG_FILE" ] && cp "$EPG_FILE" /www/iptv/epg.xml || touch /www/iptv/epg.xml
     generate_cgi
     if [ -f "$HTTPD_PID" ] && kill -0 $(cat "$HTTPD_PID") 2>/dev/null; then
         echo_success "Сервер обновлён: http://$LAN_IP:$IPTV_PORT/"
@@ -2032,13 +2058,12 @@ first_setup() {
     read as_choice </dev/tty
     if [ "$as_choice" = "1" ]; then
         if [ ! -f /etc/init.d/iptv-manager ]; then
-            cat > /etc/init.d/iptv-manager <<'INITEOF'
+        cat > /etc/init.d/iptv-manager <<'INITEOF'
 #!/bin/sh /etc/rc.common
 START=99
 start() {
     mkdir -p /www/iptv/cgi-bin
     [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u
-    [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml
     [ -f /etc/iptv/IPTV-Manager.sh ] && . /etc/iptv/IPTV-Manager.sh 2>/dev/null
     uhttpd -f -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &
     [ -f /etc/iptv/schedule.conf ] && { . /etc/iptv/schedule.conf; [ "${PLAYLIST_INTERVAL:-0}" -gt 0 ] || [ "${EPG_INTERVAL:-0}" -gt 0 ] && /bin/sh /tmp/iptv-scheduler.sh &; }
