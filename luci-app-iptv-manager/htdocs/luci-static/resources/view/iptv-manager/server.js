@@ -17,11 +17,15 @@ return view.extend({
         return L.resolveDefault(uci.load('iptv'), {});
     },
 
-    _checkStatus: function(sel) {
-        callExec({
+    _doExec: function(cmd) {
+        return callExec({
             command: '/bin/sh',
-            params: [IPTV_CMD, 'status']
-        }).then(function(res) {
+            params: ['-c', cmd]
+        });
+    },
+
+    _checkStatus: function(sel) {
+        return this._doExec(IPTV_CMD + ' status').then(function(res) {
             var out = (res.stdout || '').trim();
             if (out.indexOf('running') > -1) {
                 sel._statusEl.textContent = '● Запущен';
@@ -36,8 +40,8 @@ return view.extend({
                 sel._startBtn.disabled = false;
                 sel._stopBtn.disabled = true;
             }
-        }).catch(function() {
-            sel._statusEl.textContent = '○ Остановлен';
+        }).catch(function(e) {
+            sel._statusEl.textContent = 'Остановлен';
             sel._statusEl.style.color = '#666';
             sel._startBtn.textContent = 'Запустить';
             sel._startBtn.disabled = false;
@@ -47,23 +51,18 @@ return view.extend({
 
     render: function(data) {
         var sel = {};
-        sel._statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
+        sel._statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, '...');
 
         sel._startBtn = E('button', {
             'class': 'cbi-button cbi-button-add',
             'click': function(ev) {
                 sel._startBtn.disabled = true;
                 sel._startBtn.textContent = 'Запуск...';
-                sel._statusEl.style.color = '#1a73e8';
                 sel._statusEl.textContent = 'Запуск...';
-
-                callExec({
-                    command: '/bin/sh',
-                    params: [IPTV_CMD, 'start']
-                }).then(function() {
+                sel._doExec(IPTV_CMD + ' start').then(function() {
                     return new Promise(function(r) { setTimeout(r, 4000); });
                 }).then(function() {
-                    sel._checkStatus(sel);
+                    return sel._checkStatus(sel);
                 }).catch(function() {
                     sel._checkStatus(sel);
                 });
@@ -75,16 +74,11 @@ return view.extend({
             'click': function(ev) {
                 sel._stopBtn.disabled = true;
                 sel._stopBtn.textContent = 'Остановка...';
-                sel._statusEl.style.color = '#ef4444';
                 sel._statusEl.textContent = 'Остановка...';
-
-                callExec({
-                    command: '/bin/sh',
-                    params: [IPTV_CMD, 'stop']
-                }).then(function() {
+                sel._doExec(IPTV_CMD + ' stop').then(function() {
                     return new Promise(function(r) { setTimeout(r, 2000); });
                 }).then(function() {
-                    sel._checkStatus(sel);
+                    return sel._checkStatus(sel);
                 }).catch(function() {
                     sel._checkStatus(sel);
                 });
