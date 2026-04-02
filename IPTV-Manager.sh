@@ -2520,7 +2520,7 @@ case "$1" in
         "$0" stop; sleep 1; "$0" start; exit 0 ;;
     --server)
         # Called by init script without interactive menu - for procd compatibility
-        stop_http_server 2>/dev/null; sleep 0.5; generate_cgi; exit 0
+        stop_http_server 2>/dev/null; sleep 1; generate_cgi; exit 0
         ;;
 esac
 
