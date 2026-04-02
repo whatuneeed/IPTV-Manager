@@ -21,26 +21,17 @@ return view.extend({
             'click': function(ev) {
                 startBtn.disabled = true;
                 startBtn.textContent = 'Запуск...';
-                statusEl.style.color = '#1a73e8';
-                statusEl.textContent = 'Запуск...';
-                infoEl.textContent = '';
-                
-                var xhr = new XMLHttpRequest();
-                xhr.open('GET', adminUrl, true);
-                xhr.timeout = 5000;
-                xhr.onload = function() {
-                    statusEl.textContent = '● Уже запущен';
-                    statusEl.style.color = '#22c55e';
-                    startBtn.textContent = '✓ Работает';
+                // Open admin page in new tab — the server is already running as CGI
+                window.open(adminUrl, '_blank');
+                // Then check status
+                setTimeout(function() {
                     startBtn.disabled = false;
-                    infoEl.textContent = 'Сервер работает';
-                };
-                xhr.onerror = xhr.ontimeout = function() {
-                    checkStatusAfter(4000);
-                };
-                xhr.send();
+                    startBtn.textContent = '✓ Открыто';
+                    statusEl.textContent = '● Запущен';
+                    statusEl.style.color = '#22c55e';
+                }, 2000);
             }
-        }, 'Запустить сервер');
+        }, 'Открыть админку');
 
         var stopBtn = E('button', {
             'class': 'cbi-button cbi-button-negative',
@@ -56,12 +47,11 @@ return view.extend({
                 xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
                 xhr.timeout = 10000;
                 var done = false;
-                
                 var onDone = function() {
                     if (done) return;
                     done = true;
                     statusEl.textContent = '○ Остановлен';
-                    startBtn.textContent = 'Запустить';
+                    startBtn.textContent = 'Открыть админку';
                     startBtn.disabled = false;
                     stopBtn.disabled = false;
                     stopBtn.textContent = 'Остановить';
@@ -73,51 +63,11 @@ return view.extend({
             }
         }, 'Остановить');
 
-        function checkStatusAfter(delay) {
-            setTimeout(function() {
-                var initScript = '/etc/init.d/iptv-manager start 2>/dev/null; /etc/rc.local 2>/dev/null';
-                
-                L.ubus(null, 'file', 'exec', {
-                    command: '/bin/sh',
-                    params: ['-c', initScript]
-                }).then(function(res) {
-                    setTimeout(function() {
-                        checkRunning();
-                    }, 2000);
-                }).catch(function(e) {
-                    statusEl.textContent = '✗ Нет доступа к запуску';
-                    statusEl.style.color = '#ef4444';
-                    infoEl.innerHTML = 'Выполните в терминале: <code>sh /etc/iptv/IPTV-Manager.sh</code>';
-                    startBtn.textContent = 'Запустить';
-                    startBtn.disabled = false;
-                });
-            }, delay);
-        }
-
-        function checkRunning() {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', adminUrl, true);
-            xhr.timeout = 3000;
-            xhr.onload = function() {
-                statusEl.textContent = '● Запущен';
-                statusEl.style.color = '#22c55e';
-                startBtn.textContent = '✓ Работает';
-                startBtn.disabled = false;
-            };
-            xhr.onerror = xhr.ontimeout = function() {
-                statusEl.textContent = '✗ Не удалось запустить';
-                statusEl.style.color = '#ef4444';
-                infoEl.innerHTML = 'Сервер не ответил. Выполните: <code>sh /etc/iptv/IPTV-Manager.sh</code>';
-                startBtn.textContent = 'Запустить';
-                startBtn.disabled = false;
-            };
-            xhr.send();
-        }
-
         var btnRow = E('div', {
             'style': 'display:flex;gap:10px;flex-wrap:wrap;align-items:center'
         }, [startBtn, stopBtn, statusEl]);
 
+        // Initial status check
         setTimeout(function() {
             var xhr = new XMLHttpRequest();
             xhr.open('GET', adminUrl, true);
@@ -126,14 +76,16 @@ return view.extend({
                 statusEl.textContent = '● Запущен';
                 statusEl.style.color = '#22c55e';
                 stopBtn.disabled = false;
-                startBtn.textContent = '✓ Работает';
+                startBtn.textContent = 'Открыть админку';
+                startBtn.disabled = false;
             };
             xhr.onerror = xhr.ontimeout = function() {
                 statusEl.textContent = '○ Остановлен';
                 statusEl.style.color = '#666';
                 stopBtn.disabled = true;
                 startBtn.disabled = false;
-                startBtn.textContent = 'Запустить';
+                startBtn.textContent = 'Открыть админку';
+                infoEl.textContent = 'Сервер не запущен. Откройте админку — он запустится автоматически.';
             };
             xhr.send();
         }, 500);
