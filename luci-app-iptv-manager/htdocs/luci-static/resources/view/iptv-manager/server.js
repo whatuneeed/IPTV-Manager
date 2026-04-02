@@ -2,6 +2,7 @@
 'require view';
 'require uci';
 'require rpc';
+'require ui';
 
 var callExec = rpc.declare({
     object: 'file',
@@ -15,12 +16,12 @@ return view.extend({
         return L.resolveDefault(uci.load('iptv'), {});
     },
 
-    _checkStatus: function() {
+    _isRunning: function() {
         return callExec({
             command: '/bin/sh',
             params: ['-c', 'pgrep uhttpd']
         }).then(function(res) {
-            var out = ((res && res.stdout) || '').trim();
+            var out = (res.stdout || '').trim();
             return out.length > 0;
         }).catch(function() {
             return false;
@@ -40,14 +41,14 @@ return view.extend({
                 statusEl.textContent = 'Запуск...';
 
                 callExec({
-                    command: '/bin/sh',
-                    params: ['-c', 'cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null && /etc/init.d/iptv-manager enable && /etc/init.d/iptv-manager start']
+                    command: '/etc/init.d/iptv-manager',
+                    params: ['start']
                 }).then(function() {
                     return new Promise(function(resolve) { setTimeout(resolve, 3000); });
                 }).then(function() {
-                    return self._checkStatus();
-                }).then(function(ok) {
-                    if (ok) {
+                    return self._isRunning();
+                }).then(function(running) {
+                    if (running) {
                         statusEl.textContent = '● Запущен';
                         statusEl.style.color = '#22c55e';
                         startBtn.textContent = '✓ Работает';
@@ -75,32 +76,26 @@ return view.extend({
                 statusEl.textContent = 'Остановка...';
 
                 callExec({
-                    command: '/bin/sh',
-                    params: ['-c', '/etc/init.d/iptv-manager stop']
+                    command: '/etc/init.d/iptv-manager',
+                    params: ['stop']
                 }).then(function() {
                     return new Promise(function(resolve) { setTimeout(resolve, 2000); });
                 }).then(function() {
-                    return self._checkStatus();
-                }).then(function(ok) {
-                    if (!ok) {
+                    return self._isRunning();
+                }).then(function(running) {
+                    if (!running) {
                         statusEl.textContent = '○ Остановлен';
                         statusEl.style.color = '#666';
-                        startBtn.textContent = 'Запустить';
-                    } else {
-                        statusEl.textContent = '● Запущен';
-                        statusEl.style.color = '#22c55e';
-                        startBtn.textContent = '✓ Работает';
                     }
+                    startBtn.textContent = 'Запустить';
                     startBtn.disabled = false;
-                    stopBtn.disabled = !ok;
+                    stopBtn.disabled = true;
                     stopBtn.textContent = 'Остановить';
                 }).catch(function() {
                     statusEl.textContent = '○ Остановлен';
                     statusEl.style.color = '#666';
                     startBtn.textContent = 'Запустить';
                     startBtn.disabled = false;
-                    stopBtn.disabled = true;
-                    stopBtn.textContent = 'Остановить';
                 });
             }
         }, 'Остановить');
@@ -109,8 +104,8 @@ return view.extend({
             'style': 'display:flex;gap:10px;flex-wrap:wrap;align-items:center'
         }, [startBtn, stopBtn, statusEl]);
 
-        self._checkStatus().then(function(ok) {
-            if (ok) {
+        self._isRunning().then(function(running) {
+            if (running) {
                 statusEl.textContent = '● Запущен';
                 statusEl.style.color = '#22c55e';
                 startBtn.textContent = '✓ Работает';
