@@ -1835,6 +1835,13 @@ uninstall() {
     rm -rf /etc/iptv /www/iptv
     rm -f /var/run/iptv-httpd.pid /var/run/iptv-scheduler.pid /tmp/iptv-scheduler.sh /tmp/iptv-edit.m3u /tmp/iptv-group-opts.txt
     [ -f /etc/init.d/iptv-manager ] && { /etc/init.d/iptv-manager disable 2>/dev/null; rm -f /etc/init.d/iptv-manager; }
+    echo_info "Удаляем LuCI-плагин..."
+    rm -rf /www/luci-static/resources/view/iptv-manager
+    rm -f /usr/share/luci/menu.d/luci-app-iptv-manager.json
+    rm -f /usr/share/rpcd/acl.d/luci-app-iptv-manager.json
+    rm -f /etc/uci-defaults/99-luci-iptv-manager
+    rm -f /etc/config/iptv
+    /etc/init.d/rpcd restart 2>/dev/null
     echo_success "IPTV Manager полностью удалён"
     echo_info "Для выхода введите Enter"
 }
