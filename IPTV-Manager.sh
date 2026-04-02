@@ -2099,7 +2099,13 @@ INITEOF
         local ok=0
         for f in $luci_files; do
             total=$((total + 1))
-            local dest="/$f"
+            local dest=""
+            case "$f" in
+                root/*) dest="/$(echo "$f" | sed 's|^root/|usr/|')" ;;
+                htdocs/*) dest="/$(echo "$f" | sed 's|^htdocs/|www/|')" ;;
+                luasrc/*) dest="/$(echo "$f" | sed 's|^luasrc/|usr/lib/lua/luci/|')" ;;
+                *) dest="/$f" ;;
+            esac
             mkdir -p "$(dirname "$dest")"
             if wget -q --timeout=10 --no-check-certificate -O "$dest" "$luci_base/$f" 2>/dev/null; then
                 ok=$((ok + 1))
