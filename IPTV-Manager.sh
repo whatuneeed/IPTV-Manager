@@ -2101,14 +2101,17 @@ INITEOF
             total=$((total + 1))
             local dest=""
             case "$f" in
-                root/*) dest="/$(echo "$f" | sed 's|^root/|usr/|')" ;;
-                htdocs/*) dest="/$(echo "$f" | sed 's|^htdocs/|www/|')" ;;
-                luasrc/*) dest="/$(echo "$f" | sed 's|^luasrc/|usr/lib/lua/luci/|')" ;;
+                root/*) dest="/${f#root/}" ;;
+                htdocs/*) dest="/www/${f#htdocs/}" ;;
+                luasrc/*) dest="/usr/lib/lua/luci/${f#luasrc/}" ;;
                 *) dest="/$f" ;;
             esac
             mkdir -p "$(dirname "$dest")"
-            if wget -q --timeout=10 --no-check-certificate -O "$dest" "$luci_base/$f" 2>/dev/null; then
+            if wget -q --timeout=10 --no-check-certificate -O "$dest" "$luci_base/$f" 2>/tmp/luci-wget-err; then
                 ok=$((ok + 1))
+            else
+                echo_info "FAIL: $f -> $dest"
+                cat /tmp/luci-wget-err 2>/dev/null
             fi
         done
         if [ "$ok" -ge 7 ]; then
