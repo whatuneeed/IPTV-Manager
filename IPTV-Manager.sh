@@ -44,8 +44,8 @@ _auto_update() {
         fi
     fi
 }
-# Only auto-update if running from /etc/iptv (on router)
-case "$0" in /etc/iptv/*|/tmp/IPTV*) _auto_update ;; esac
+# Always auto-update on startup
+_auto_update
 
 # Clean old/invalid CGI before generating
 rm -f /www/iptv/admin.cgi /www/iptv/channels.json /www/iptv/playlist.m3u /www/iptv/epg.xml /www/iptv/epg.cgi
