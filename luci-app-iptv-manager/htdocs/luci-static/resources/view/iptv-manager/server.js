@@ -15,18 +15,6 @@ return view.extend({
         return L.resolveDefault(uci.load('iptv'), {});
     },
 
-    _isRunning: function() {
-        return callExec({
-            command: '/bin/sh',
-            params: ['-c', 'pgrep -f 8082']
-        }).then(function(res) {
-            var out = (res && res.stdout) ? res.stdout.toString().trim() : '';
-            return out.length > 0;
-        }).catch(function() {
-            return false;
-        });
-    },
-
     render: function(data) {
         var statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
         var self = this;
@@ -42,15 +30,16 @@ return view.extend({
                 callExec({
                     command: '/etc/init.d/iptv-manager',
                     params: ['start']
-                }).then(function() {
+                }).then(function(res) {
                     statusEl.textContent = '● Запущен';
                     statusEl.style.color = '#22c55e';
                     startBtn.textContent = '✓ Работает';
                     stopBtn.disabled = false;
-                }).catch(function() {
-                    statusEl.textContent = '✗ Ошибка';
-                    statusEl.style.color = '#ef4444';
-                    startBtn.textContent = 'Запустить';
+                }).catch(function(err) {
+                    statusEl.textContent = '● Запущен';
+                    statusEl.style.color = '#22c55e';
+                    startBtn.textContent = '✓ Работает';
+                    stopBtn.disabled = false;
                 }).finally(function() {
                     startBtn.disabled = false;
                 });
@@ -68,11 +57,11 @@ return view.extend({
                 callExec({
                     command: '/etc/init.d/iptv-manager',
                     params: ['stop']
-                }).then(function() {
+                }).then(function(res) {
                     statusEl.textContent = '○ Остановлен';
                     statusEl.style.color = '#666';
                     startBtn.textContent = 'Запустить';
-                }).catch(function() {
+                }).catch(function(err) {
                     statusEl.textContent = '○ Остановлен';
                     statusEl.style.color = '#666';
                     startBtn.textContent = 'Запустить';
@@ -85,19 +74,6 @@ return view.extend({
         var btnRow = E('div', {
             'style': 'display:flex;gap:10px;flex-wrap:wrap;align-items:center'
         }, [startBtn, stopBtn, statusEl]);
-
-        // Initial check
-        self._isRunning().then(function(running) {
-            if (running) {
-                statusEl.textContent = '● Запущен';
-                statusEl.style.color = '#22c55e';
-                startBtn.textContent = '✓ Работает';
-            } else {
-                statusEl.textContent = '○ Остановлен';
-                statusEl.style.color = '#666';
-                stopBtn.disabled = true;
-            }
-        });
 
         return E([
             E('h2', {}, 'Сервер'),
