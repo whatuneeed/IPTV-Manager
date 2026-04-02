@@ -20,15 +20,14 @@ return view.extend({
             command: '/bin/sh',
             params: ['-c', 'wget -q -O /dev/null --timeout=2 http://192.168.1.1:8082/cgi-bin/admin.cgi 2>/dev/null']
         }).then(function(res) {
-            return { running: true, raw: JSON.stringify(res) };
+            return { running: true };
         }).catch(function(err) {
-            return { running: false, raw: JSON.stringify(err) };
+            return { running: false };
         });
     },
 
     render: function(data) {
-        var statusEl = E('span', { 'style': 'color:#666;font-size:12px;font-weight:400' }, 'Проверка...');
-        var rawEl = E('span', { 'style': 'display:block;color:#888;font-size:10px;margin-top:4px;word-break:break-all' }, '');
+        var statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
         var self = this;
 
         var startBtn = E('button', {
@@ -64,7 +63,7 @@ return view.extend({
 
                 callExec({
                     command: '/bin/sh',
-                    params: ['-c', '/etc/init.d/iptv-manager stop && killall -9 uhttpd 2>/dev/null && sleep 1']
+                    params: ['-c', '/etc/init.d/iptv-manager stop; kill -9 $(pgrep -f 8082) 2>/dev/null; sleep 1']
                 }).then(function() {
                     return new Promise(function(r) { setTimeout(r, 1500); });
                 }).then(function() {
@@ -78,7 +77,6 @@ return view.extend({
         }, 'Остановить');
 
         function _setStatus(result) {
-            rawEl.textContent = result.raw;
             if (result.running) {
                 statusEl.textContent = '● Запущен';
                 statusEl.style.color = '#22c55e';
