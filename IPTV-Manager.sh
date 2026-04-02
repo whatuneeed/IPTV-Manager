@@ -2091,24 +2091,25 @@ INITEOF
     if [ "$luci_choice" = "1" ]; then
         echo_info "Скачиваем LuCI-плагин..."
         local luci_base="https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/luci-app-iptv-manager"
-        local luci_dirs="luasrc/controller luasrc/model/cbi/iptv-manager luasrc/view/iptv-manager root/usr/share/luci/menu.d root/usr/share/rpcd/acl.d root/etc/uci-defaults"
-        local luci_files="luasrc/controller/iptv-manager.lua luasrc/model/cbi/iptv-manager/playlist.lua luasrc/model/cbi/iptv-manager/epg.lua luasrc/model/cbi/iptv-manager/schedule.lua luasrc/model/cbi/iptv-manager/security.lua luasrc/view/iptv-manager/channels.htm luasrc/view/iptv-manager/player.htm root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
+        local luci_files="htdocs/luci-static/resources/view/iptv-manager/playlist.js htdocs/luci-static/resources/view/iptv-manager/epg.js htdocs/luci-static/resources/view/iptv-manager/schedule.js htdocs/luci-static/resources/view/iptv-manager/security.js htdocs/luci-static/resources/view/iptv-manager/channels.js htdocs/luci-static/resources/view/iptv-manager/player.js root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
+        local total=0
         local ok=0
         for f in $luci_files; do
+            total=$((total + 1))
             local dest="/$f"
             mkdir -p "$(dirname "$dest")"
             if wget -q --timeout=10 --no-check-certificate -O "$dest" "$luci_base/$f" 2>/dev/null; then
                 ok=$((ok + 1))
             fi
         done
-        if [ "$ok" -ge 8 ]; then
+        if [ "$ok" -ge 7 ]; then
             chmod +x /etc/uci-defaults/99-luci-iptv-manager 2>/dev/null
             /etc/uci-defaults/99-luci-iptv-manager 2>/dev/null
             /etc/init.d/rpcd restart 2>/dev/null
-            echo_success "LuCI-плагин установлен! ($ok/$ok файлов)"
+            echo_success "LuCI-плагин установлен! ($ok/$total файлов)"
             echo_info "Раздел появится в Services → IPTV Manager"
         else
-            echo_error "Установлено $ok/11 файлов. Проверьте интернет-соединение."
+            echo_error "Установлено $ok/$total файлов. Проверьте интернет-соединение."
         fi
     else
         echo_info "Пропущено"
