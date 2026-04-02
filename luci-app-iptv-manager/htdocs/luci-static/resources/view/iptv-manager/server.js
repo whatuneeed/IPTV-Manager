@@ -15,19 +15,20 @@ return view.extend({
         return L.resolveDefault(uci.load('iptv'), {});
     },
 
-    _isRunning: function() {
+    _isRunning: function(sel) {
         return callExec({
             command: '/bin/sh',
             params: ['-c', 'wget -q -O /dev/null --timeout=2 http://192.168.1.1:8082/cgi-bin/admin.cgi 2>/dev/null']
         }).then(function(res) {
-            return res.code === 0;
-        }).catch(function() {
-            return false;
+            return { running: true, raw: JSON.stringify(res) };
+        }).catch(function(err) {
+            return { running: false, raw: JSON.stringify(err) };
         });
     },
 
     render: function(data) {
-        var statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
+        var statusEl = E('span', { 'style': 'color:#666;font-size:12px;font-weight:400' }, 'Проверка...');
+        var rawEl = E('span', { 'style': 'display:block;color:#888;font-size:10px;margin-top:4px;word-break:break-all' }, '');
         var self = this;
 
         var startBtn = E('button', {
@@ -76,8 +77,9 @@ return view.extend({
             }
         }, 'Остановить');
 
-        function _setStatus(ok) {
-            if (ok) {
+        function _setStatus(result) {
+            rawEl.textContent = result.raw;
+            if (result.running) {
                 statusEl.textContent = '● Запущен';
                 statusEl.style.color = '#22c55e';
                 startBtn.textContent = '✓ Работает';
