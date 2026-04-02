@@ -1,9 +1,9 @@
 #!/bin/sh
 # ==========================================
-# IPTV Manager для OpenWrt v3.7
+# IPTV Manager для OpenWrt v3.8
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.7"
+IPTV_MANAGER_VERSION="3.8"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -16,6 +16,7 @@ EPG_FILE="$IPTV_DIR/epg.xml"
 EPG_CONFIG="$IPTV_DIR/epg.conf"
 SCHEDULE_FILE="$IPTV_DIR/schedule.conf"
 FAVORITES_FILE="$IPTV_DIR/favorites.json"
+SECURITY_FILE="$IPTV_DIR/security.conf"
 HTTPD_PID="/var/run/iptv-httpd.pid"
 
 mkdir -p "$IPTV_DIR"
@@ -23,6 +24,7 @@ mkdir -p "$IPTV_DIR"
 [ -f "$EPG_CONFIG" ] || touch "$EPG_CONFIG"
 [ -f "$SCHEDULE_FILE" ] || touch "$SCHEDULE_FILE"
 [ -f "$FAVORITES_FILE" ] || echo "[]" > "$FAVORITES_FILE"
+[ -f "$SECURITY_FILE" ] || printf 'ADMIN_USER=""\nADMIN_PASS=""\nAPI_TOKEN=""\n' > "$SECURITY_FILE"
 
 echo_color() { echo -e "${MAGENTA}$1${NC}"; }
 echo_success() { echo -e "${GREEN}$1${NC}"; }
@@ -132,16 +134,42 @@ generate_cgi() {
     # --- CGI файл (без раскрытия переменных) ---
     cat > /www/iptv/cgi-bin/admin.cgi << 'CGIEOF'
 #!/bin/sh
-IPTV_MANAGER_VERSION="3.7"
+IPTV_MANAGER_VERSION="3.8"
 PL="/etc/iptv/playlist.m3u"
 EC="/etc/iptv/iptv.conf"
 EF="/etc/iptv/epg.xml"
 EXC="/etc/iptv/epg.conf"
 SC="/etc/iptv/schedule.conf"
 FAV="/etc/iptv/favorites.json"
+SEC="/etc/iptv/security.conf"
 wget_opt() { local o="-q --timeout=15"; wget --help 2>&1 | grep -q "no-check-certificate" && o="$o --no-check-certificate"; echo "$o"; }
 hdr() { printf 'Content-Type: text/html; charset=utf-8\r\n\r\n'; }
 json_hdr() { printf 'Content-Type: application/json\r\n\r\n'; }
+auth_fail() { printf 'HTTP/1.0 401 Unauthorized\r\nWWW-Authenticate: Basic realm="IPTV Manager"\r\nContent-Type: text/html\r\n\r\n<html><body><h1>401 Unauthorized</h1></body></html>\r\n'; exit 0; }
+check_auth() {
+    [ -f "$SEC" ] || return
+    . "$SEC" 2>/dev/null
+    [ -z "$ADMIN_USER" ] && [ -z "$ADMIN_PASS" ] && return
+    AUTH="${HTTP_AUTHORIZATION:-}"
+    case "$AUTH" in
+        Basic\ *)
+            CREDS=$(echo "$AUTH" | sed 's/Basic //' | busybox base64 -d 2>/dev/null || echo "$AUTH" | sed 's/Basic //' | openssl enc -base64 -d 2>/dev/null || echo "")
+            U=$(echo "$CREDS" | cut -d: -f1)
+            P=$(echo "$CREDS" | cut -d: -f2-)
+            [ "$U" = "$ADMIN_USER" ] && [ "$P" = "$ADMIN_PASS" ] && return
+            ;;
+    esac
+    auth_fail
+}
+check_api_token() {
+    [ -f "$SEC" ] || return
+    . "$SEC" 2>/dev/null
+    [ -z "$API_TOKEN" ] && return
+    TOK="${HTTP_X_API_TOKEN:-}"
+    [ "$TOK" = "$API_TOKEN" ] && return
+    auth_fail
+}
+check_auth
 METHOD="${REQUEST_METHOD:-GET}"
 QUERY="${QUERY_STRING:-}"
 CL="${CONTENT_LENGTH:-0}"
@@ -153,6 +181,7 @@ case "$METHOD" in
     POST) ACTION=$(echo "$POST_DATA" | sed -n 's/.*action=\([^&]*\).*/\1/p') ;;
 esac
 if [ -n "$ACTION" ]; then
+    check_api_token
     json_hdr
     case "$ACTION" in
         check_channel)
@@ -306,6 +335,39 @@ if [ -n "$ACTION" ]; then
         get_favorites)
             [ -f "$FAV" ] || echo "[]" > "$FAV"
             printf '{"status":"ok","favorites":%s}' "$(cat "$FAV")" ;;
+        set_security)
+            U=$(echo "$POST_DATA" | sed -n 's/.*user=\([^&]*\).*/\1/p')
+            P=$(echo "$POST_DATA" | sed -n 's/.*pass=\([^&]*\).*/\1/p')
+            U=$(echo "$U" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
+            P=$(echo "$P" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
+            if [ -n "$U" ] && [ -n "$P" ]; then
+                printf 'ADMIN_USER="%s"\nADMIN_PASS="%s"\nAPI_TOKEN="%s"\n' "$U" "$P" "$(grep API_TOKEN "$SEC" 2>/dev/null | sed 's/.*="//;s/"//' || echo '')" > "$SEC"
+                printf '{"status":"ok","message":"Пароль установлен"}'
+            else
+                printf 'ADMIN_USER=""\nADMIN_PASS=""\nAPI_TOKEN="%s"\n' "$(grep API_TOKEN "$SEC" 2>/dev/null | sed 's/.*="//;s/"//' || echo '')" > "$SEC"
+                printf '{"status":"ok","message":"Авторизация отключена"}'
+            fi ;;
+        set_token)
+            T=$(echo "$POST_DATA" | sed -n 's/.*token=\([^&]*\).*/\1/p')
+            T=$(echo "$T" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
+            printf 'ADMIN_USER="%s"\nADMIN_PASS="%s"\nAPI_TOKEN="%s"\n' "$(grep ADMIN_USER "$SEC" 2>/dev/null | sed 's/.*="//;s/"//' || echo '')" "$(grep ADMIN_PASS "$SEC" 2>/dev/null | sed 's/.*="//;s/"//' || echo '')" "$T" > "$SEC"
+            if [ -n "$T" ]; then
+                printf '{"status":"ok","message":"Токен установлен"}'
+            else
+                printf '{"status":"ok","message":"API токен отключён"}'
+            fi ;;
+        check_update)
+            CUR="$IPTV_MANAGER_VERSION"
+            LATEST=$(wget -q --timeout=5 -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null | head -10 | grep -o 'IPTV_MANAGER_VERSION="[^"]*"' | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
+            if [ -n "$LATEST" ]; then
+                if [ "$LATEST" != "$CUR" ]; then
+                    printf '{"status":"ok","update":true,"current":"%s","latest":"%s"}' "$CUR" "$LATEST"
+                else
+                    printf '{"status":"ok","update":false,"current":"%s","latest":"%s"}' "$CUR" "$LATEST"
+                fi
+            else
+                printf '{"status":"ok","update":false,"current":"%s","latest":""}' "$CUR"
+            fi ;;
         *) printf '{"status":"error","message":"Неизвестное действие"}' ;;
     esac
     exit 0
@@ -536,6 +598,26 @@ $epg_notice
 <button class="b bp bsm" onclick="doImport()">Восстановить</button>
 </div>
 </div>
+</div>
+<hr>
+<h3>Обновление</h3>
+<div class="bg"><button class="b bp bsm" onclick="checkUpdate()">🔄 Проверить обновления</button></div>
+<hr>
+</div>
+<hr>
+<h3>Безопасность</h3>
+<div class="sg">
+<div class="sc">
+<h3>Пароль на админку</h3>
+<div class="fg" style="margin-top:6px"><label>Логин</label><input type="text" id="sec-user" placeholder="Оставьте пустым для отключения"></div>
+<div class="fg"><label>Пароль</label><input type="password" id="sec-pass" placeholder="Оставьте пустым для отключения"></div>
+<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="saveSecurity()">Сохранить</button></div>
+</div>
+<div class="sc">
+<h3>API токен</h3>
+<div class="fg" style="margin-top:6px"><label>Токен</label><input type="text" id="sec-token" placeholder="Оставьте пустым для отключения"></div>
+<div class="si" style="margin-top:4px">Передавайте в заголовке <code>X-API-Token</code></div>
+<div class="bg" style="margin-top:8px"><button class="b bs bsm" onclick="saveToken()">Сохранить</button></div>
 </div>
 </div>
 <div class="modal" id="em">
@@ -836,6 +918,35 @@ function loadFavorites(){
     x.send();
 }
 
+function saveSecurity(){
+    var u=document.getElementById('sec-user').value;
+    var p=document.getElementById('sec-pass').value;
+    act('set_security','user='+encodeURIComponent(u)+'&pass='+encodeURIComponent(p));
+}
+
+function saveToken(){
+    var t=document.getElementById('sec-token').value;
+    act('set_token','token='+encodeURIComponent(t));
+}
+
+function checkUpdate(){
+    var x=new XMLHttpRequest();
+    x.open('GET',API+'?action=check_update',true);
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'){
+                if(r.update){
+                    toast('Доступна v'+r.latest+'! Текущая: v'+r.current,'ok');
+                }else{
+                    toast('У вас последняя версия v'+r.current,'ok');
+                }
+            }
+        }catch(e){toast('Ошибка проверки','err')}
+    };
+    x.send();
+}
+
 function escHtml(s){
     if(!s)return'';
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -952,6 +1063,14 @@ video{max-width:100%;max-height:100%;background:#000;display:block}
 #sb-pl{padding:8px 12px;border-bottom:1px solid var(--border);display:none}
 #sb-pl input{width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;margin-bottom:6px}
 #sb-pl button{width:100%;padding:6px;background:var(--green);border:none;border-radius:5px;color:#fff;font-weight:600;cursor:pointer;font-size:12px}
+#sb-hist{padding:8px 12px;border-bottom:1px solid var(--border);display:none}
+#sb-hist .hist-item{display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;border-bottom:1px solid rgba(51,65,85,.3)}
+#sb-hist .hist-item:hover{background:var(--hover);border-radius:4px}
+#sb-hist .hist-item:last-child{border-bottom:none}
+#sb-hist .hist-name{flex:1;font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#sb-hist .hist-time{font-size:10px;color:var(--text3)}
+#sleep-badge{position:absolute;top:8px;left:8px;background:rgba(239,68,68,.85);color:#fff;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:600;display:none;z-index:10}
+#sleep-badge.show{display:block}
 #ch-list{flex:1;overflow-y:auto}
 .ch{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;border-bottom:1px solid rgba(51,65,85,.4);transition:background .12s}
 .ch:hover{background:var(--hover)}
