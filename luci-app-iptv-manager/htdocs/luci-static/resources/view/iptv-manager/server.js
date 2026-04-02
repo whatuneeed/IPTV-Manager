@@ -2,7 +2,6 @@
 'require view';
 'require uci';
 'require rpc';
-'require ui';
 
 var callExec = rpc.declare({
     object: 'file',
@@ -19,9 +18,9 @@ return view.extend({
     _isRunning: function() {
         return callExec({
             command: '/bin/sh',
-            params: ['-c', 'pgrep uhttpd']
+            params: ['-c', 'pgrep -f 8082']
         }).then(function(res) {
-            var out = (res.stdout || '').trim();
+            var out = (res && res.stdout) ? res.stdout.toString().trim() : '';
             return out.length > 0;
         }).catch(function() {
             return false;
@@ -44,25 +43,16 @@ return view.extend({
                     command: '/etc/init.d/iptv-manager',
                     params: ['start']
                 }).then(function() {
-                    return new Promise(function(resolve) { setTimeout(resolve, 3000); });
-                }).then(function() {
-                    return self._isRunning();
-                }).then(function(running) {
-                    if (running) {
-                        statusEl.textContent = '● Запущен';
-                        statusEl.style.color = '#22c55e';
-                        startBtn.textContent = '✓ Работает';
-                        stopBtn.disabled = false;
-                    } else {
-                        statusEl.textContent = '✗ Не запустился';
-                        statusEl.style.color = '#ef4444';
-                    }
-                    startBtn.disabled = false;
+                    statusEl.textContent = '● Запущен';
+                    statusEl.style.color = '#22c55e';
+                    startBtn.textContent = '✓ Работает';
+                    stopBtn.disabled = false;
                 }).catch(function() {
                     statusEl.textContent = '✗ Ошибка';
                     statusEl.style.color = '#ef4444';
-                    startBtn.disabled = false;
                     startBtn.textContent = 'Запустить';
+                }).finally(function() {
+                    startBtn.disabled = false;
                 });
             }
         }, 'Запустить');
@@ -79,23 +69,15 @@ return view.extend({
                     command: '/etc/init.d/iptv-manager',
                     params: ['stop']
                 }).then(function() {
-                    return new Promise(function(resolve) { setTimeout(resolve, 2000); });
-                }).then(function() {
-                    return self._isRunning();
-                }).then(function(running) {
-                    if (!running) {
-                        statusEl.textContent = '○ Остановлен';
-                        statusEl.style.color = '#666';
-                    }
+                    statusEl.textContent = '○ Остановлен';
+                    statusEl.style.color = '#666';
                     startBtn.textContent = 'Запустить';
-                    startBtn.disabled = false;
-                    stopBtn.disabled = true;
-                    stopBtn.textContent = 'Остановить';
                 }).catch(function() {
                     statusEl.textContent = '○ Остановлен';
                     statusEl.style.color = '#666';
                     startBtn.textContent = 'Запустить';
-                    startBtn.disabled = false;
+                }).finally(function() {
+                    stopBtn.disabled = true;
                 });
             }
         }, 'Остановить');
@@ -104,6 +86,7 @@ return view.extend({
             'style': 'display:flex;gap:10px;flex-wrap:wrap;align-items:center'
         }, [startBtn, stopBtn, statusEl]);
 
+        // Initial check
         self._isRunning().then(function(running) {
             if (running) {
                 statusEl.textContent = '● Запущен';
