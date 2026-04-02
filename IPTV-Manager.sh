@@ -603,8 +603,6 @@ $epg_notice
 <h3>Обновление</h3>
 <div class="bg"><button class="b bp bsm" onclick="checkUpdate()">🔄 Проверить обновления</button></div>
 <hr>
-</div>
-<hr>
 <h3>Безопасность</h3>
 <div class="sg">
 <div class="sc">
@@ -1852,7 +1850,7 @@ reinstall_iptv() {
 # ==========================================
 # Меню
 # ==========================================
-show_menu() {
+print_header() {
     clear
     load_sched
     echo -e "${MAGENTA}╔══════════════════════════════════════════╗"
@@ -1876,48 +1874,120 @@ show_menu() {
         echo_error "Сервер: остановлен"
     fi
     echo ""
-    echo -e "${YELLOW}── Плейлист ──────────────────────────${NC}"
-    echo -e "${CYAN} 1) ${GREEN}Загрузить по ссылке${NC}"
-    echo -e "${CYAN} 2) ${GREEN}Загрузить из файла${NC}"
-    echo -e "${CYAN} 3) ${GREEN}Настроить провайдера${NC}"
-    echo -e "${CYAN} 4) ${GREEN}Обновить плейлист${NC}"
+}
+
+show_menu() {
+    print_header
+    echo -e "${YELLOW}── Главное меню ──────────────────────${NC}"
+    echo -e "${CYAN} 1) ${GREEN}Плейлист${NC}"
+    echo -e "${CYAN} 2) ${GREEN}Телепрограмма (EPG)${NC}"
+    echo -e "${CYAN} 3) ${GREEN}Сервер${NC}"
+    echo -e "${CYAN} 4) ${GREEN}Настройки${NC}"
+    echo -e "${CYAN} 5) ${GREEN}Обновление / Установка${NC}"
     echo ""
-    echo -e "${YELLOW}── Телепрограмма ─────────────────────${NC}"
-    echo -e "${CYAN} 5) ${GREEN}Настроить EPG${NC}"
-    echo -e "${CYAN} 6) ${GREEN}Обновить EPG${NC}"
-    echo -e "${CYAN} 7) ${GREEN}Удалить EPG${NC}"
-    echo ""
-    echo -e "${YELLOW}── Сервер ────────────────────────────${NC}"
-    echo -e "${CYAN} 8) ${GREEN}Запустить${NC}"
-    echo -e "${CYAN} 9) ${GREEN}Остановить${NC}"
-    echo ""
-    echo -e "${YELLOW}── Настройки ─────────────────────────${NC}"
-    echo -e "${CYAN}10) ${GREEN}Расписание обновлений${NC}"
-    echo -e "${CYAN}11) ${GREEN}Автозапуск${NC}"
-    echo -e "${CYAN}14) ${GREEN}Проверить обновления${NC}"
-    echo -e "${CYAN}15) ${GREEN}Обновить скрипт${NC}"
-    echo ""
-    echo -e "${YELLOW}── Установка ─────────────────────────${NC}"
-    echo -e "${CYAN}16) ${GREEN}Установить на роутер${NC}"
-    echo -e "${CYAN}17) ${GREEN}Переустановить${NC}"
-    echo ""
-    echo -e "${YELLOW}── Удаление ──────────────────────────${NC}"
-    echo -e "${CYAN}12) ${GREEN}Удалить плейлист${NC}"
-    echo -e "${RED} 13) ${RED}Удалить IPTV Manager${NC}"
+    echo -e "${RED} 0) ${RED}Удалить IPTV Manager${NC}"
     echo ""
     echo -e "${CYAN}Enter) ${GREEN}Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"
     read c </dev/tty
     case "$c" in
+        1) menu_playlist ;; 2) menu_epg ;; 3) menu_server ;;
+        4) menu_settings ;; 5) menu_update ;;
+        0) uninstall ;; *) echo_info "Выход"; exit 0 ;;
+    esac
+    PAUSE
+}
+
+menu_playlist() {
+    print_header
+    echo -e "${YELLOW}── Плейлист ──────────────────────────${NC}"
+    echo -e "${CYAN} 1) ${GREEN}Загрузить по ссылке${NC}"
+    echo -e "${CYAN} 2) ${GREEN}Загрузить из файла${NC}"
+    echo -e "${CYAN} 3) ${GREEN}Настроить провайдера${NC}"
+    echo -e "${CYAN} 4) ${GREEN}Обновить плейлист${NC}"
+    echo -e "${CYAN} 5) ${GREEN}Удалить плейлист${NC}"
+    echo ""
+    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
         1) load_playlist_url ;; 2) load_playlist_file ;; 3) setup_provider ;;
-        4) do_update_playlist ;; 5) setup_epg ;; 6) do_update_epg ;; 7) remove_epg ;;
-        8) start_http_server ;; 9) stop_http_server ;;
-        10) setup_schedule ;; 11) setup_autostart ;;
-        12) remove_playlist ;; 13) uninstall ;;
-        14) check_for_updates ;; 15) do_update_script ;;
-        16) install_iptv ;; 17) reinstall_iptv ;;
-        *) echo_info "Выход"; exit 0 ;;
+        4) do_update_playlist ;; 5) remove_playlist ;;
+        0) return ;; *) echo_info "Отмена"; return ;;
+    esac
+    PAUSE
+}
+
+menu_epg() {
+    print_header
+    echo -e "${YELLOW}── Телепрограмма (EPG) ───────────────${NC}"
+    echo -e "${CYAN} 1) ${GREEN}Настроить EPG${NC}"
+    echo -e "${CYAN} 2) ${GREEN}Обновить EPG${NC}"
+    echo -e "${CYAN} 3) ${GREEN}Удалить EPG${NC}"
+    echo ""
+    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1) setup_epg ;; 2) do_update_epg ;; 3) remove_epg ;;
+        0) return ;; *) echo_info "Отмена"; return ;;
+    esac
+    PAUSE
+}
+
+menu_server() {
+    print_header
+    echo -e "${YELLOW}── Сервер ────────────────────────────${NC}"
+    echo -e "${CYAN} 1) ${GREEN}Запустить${NC}"
+    echo -e "${CYAN} 2) ${GREEN}Остановить${NC}"
+    echo ""
+    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1) start_http_server ;; 2) stop_http_server ;;
+        0) return ;; *) echo_info "Отмена"; return ;;
+    esac
+    PAUSE
+}
+
+menu_settings() {
+    print_header
+    echo -e "${YELLOW}── Настройки ─────────────────────────${NC}"
+    echo -e "${CYAN} 1) ${GREEN}Расписание обновлений${NC}"
+    echo -e "${CYAN} 2) ${GREEN}Автозапуск${NC}"
+    echo ""
+    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1) setup_schedule ;; 2) setup_autostart ;;
+        0) return ;; *) echo_info "Отмена"; return ;;
+    esac
+    PAUSE
+}
+
+menu_update() {
+    print_header
+    echo -e "${YELLOW}── Обновление / Установка ────────────${NC}"
+    echo -e "${CYAN} 1) ${GREEN}Проверить обновления${NC}"
+    echo -e "${CYAN} 2) ${GREEN}Обновить скрипт${NC}"
+    echo -e "${CYAN} 3) ${GREEN}Установить на роутер${NC}"
+    echo -e "${CYAN} 4) ${GREEN}Переустановить${NC}"
+    echo ""
+    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1) check_for_updates ;; 2) do_update_script ;;
+        3) install_iptv ;; 4) reinstall_iptv ;;
+        0) return ;; *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
