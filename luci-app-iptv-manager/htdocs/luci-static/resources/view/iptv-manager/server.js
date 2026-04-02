@@ -6,7 +6,7 @@
 var callExec = rpc.declare({
     object: 'file',
     method: 'exec',
-    params: ['command'],
+    params: ['command', 'params'],
     expect: {}
 });
 
@@ -17,7 +17,8 @@ return view.extend({
 
     _checkStatus: function() {
         return callExec({
-            command: '/bin/sh -c "pgrep uhttpd"'
+            command: '/bin/sh',
+            params: ['-c', 'pgrep uhttpd']
         }).then(function(res) {
             var out = ((res && res.stdout) || '').trim();
             return out.length > 0;
@@ -39,7 +40,8 @@ return view.extend({
                 statusEl.textContent = 'Запуск...';
 
                 callExec({
-                    command: '/bin/sh -c "cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null && /etc/init.d/iptv-manager enable && /etc/init.d/iptv-manager start"'
+                    command: '/bin/sh',
+                    params: ['-c', 'cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null && /etc/init.d/iptv-manager enable && /etc/init.d/iptv-manager start']
                 }).then(function() {
                     return new Promise(function(resolve) { setTimeout(resolve, 3000); });
                 }).then(function() {
@@ -73,7 +75,8 @@ return view.extend({
                 statusEl.textContent = 'Остановка...';
 
                 callExec({
-                    command: '/bin/sh -c "/etc/init.d/iptv-manager stop"'
+                    command: '/bin/sh',
+                    params: ['-c', '/etc/init.d/iptv-manager stop']
                 }).then(function() {
                     return new Promise(function(resolve) { setTimeout(resolve, 2000); });
                 }).then(function() {
