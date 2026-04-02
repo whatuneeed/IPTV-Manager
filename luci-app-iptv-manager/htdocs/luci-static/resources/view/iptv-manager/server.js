@@ -2,6 +2,14 @@
 'require view';
 'require uci';
 'require ui';
+'require rpc';
+
+var callFileExec = rpc.declare({
+    object: 'file',
+    method: 'exec',
+    params: [ 'command' ],
+    expect: { }
+});
 
 return view.extend({
     load: function() {
@@ -21,17 +29,41 @@ return view.extend({
             'click': function(ev) {
                 startBtn.disabled = true;
                 startBtn.textContent = 'Запуск...';
-                // Open admin page in new tab — the server is already running as CGI
-                window.open(adminUrl, '_blank');
-                // Then check status
-                setTimeout(function() {
-                    startBtn.disabled = false;
-                    startBtn.textContent = '✓ Открыто';
-                    statusEl.textContent = '● Запущен';
+                statusEl.style.color = '#1a73e8';
+                statusEl.textContent = 'Запуск...';
+                infoEl.textContent = '';
+
+                // Check if already running
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', adminUrl, true);
+                xhr.timeout = 3000;
+                xhr.onload = function() {
+                    statusEl.textContent = '● Уже запущен';
                     statusEl.style.color = '#22c55e';
-                }, 2000);
+                    startBtn.textContent = '✓ Работает';
+                    startBtn.disabled = false;
+                };
+                xhr.onerror = xhr.ontimeout = function() {
+                    // Not running — start via ubus file exec
+                    callFileExec({ command: '/etc/init.d/iptv-manager' }).then(function(res) {
+                        // Try again
+                        checkAfter(3000);
+                    }).catch(function() {
+                        // Try without args
+                        callFileExec({ command: 'sh /etc/iptv/IPTV-Manager.sh' }).then(function(res) {
+                            checkAfter(3000);
+                        }).catch(function() {
+                            statusEl.textContent = '✗ Ошибка запуска';
+                            statusEl.style.color = '#ef4444';
+                            infoEl.innerHTML = 'Не удалось запустить. Выполните: <code>sh /etc/iptv/IPTV-Manager.sh</code>';
+                            startBtn.disabled = false;
+                            startBtn.textContent = 'Запустить';
+                        });
+                    });
+                };
+                xhr.send();
             }
-        }, 'Открыть админку');
+        }, 'Запустить сервер');
 
         var stopBtn = E('button', {
             'class': 'cbi-button cbi-button-negative',
@@ -51,7 +83,7 @@ return view.extend({
                     if (done) return;
                     done = true;
                     statusEl.textContent = '○ Остановлен';
-                    startBtn.textContent = 'Открыть админку';
+                    startBtn.textContent = 'Запустить';
                     startBtn.disabled = false;
                     stopBtn.disabled = false;
                     stopBtn.textContent = 'Остановить';
@@ -63,11 +95,34 @@ return view.extend({
             }
         }, 'Остановить');
 
+        function checkAfter(delay) {
+            setTimeout(function() {
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', adminUrl, true);
+                xhr.timeout = 3000;
+                xhr.onload = function() {
+                    statusEl.textContent = '● Запущен';
+                    statusEl.style.color = '#22c55e';
+                    startBtn.textContent = '✓ Работает';
+                    startBtn.disabled = false;
+                    infoEl.textContent = 'Сервер запущен';
+                };
+                xhr.onerror = xhr.ontimeout = function() {
+                    statusEl.textContent = '✗ Не запустился';
+                    statusEl.style.color = '#ef4444';
+                    infoEl.innerHTML = 'Не удалось запустить. Выполните: <code>sh /etc/iptv/IPTV-Manager.sh</code>';
+                    startBtn.disabled = false;
+                    startBtn.textContent = 'Запустить';
+                };
+                xhr.send();
+            }, delay);
+        }
+
         var btnRow = E('div', {
             'style': 'display:flex;gap:10px;flex-wrap:wrap;align-items:center'
         }, [startBtn, stopBtn, statusEl]);
 
-        // Initial status check
+        // Initial status
         setTimeout(function() {
             var xhr = new XMLHttpRequest();
             xhr.open('GET', adminUrl, true);
@@ -76,16 +131,12 @@ return view.extend({
                 statusEl.textContent = '● Запущен';
                 statusEl.style.color = '#22c55e';
                 stopBtn.disabled = false;
-                startBtn.textContent = 'Открыть админку';
-                startBtn.disabled = false;
+                startBtn.textContent = '✓ Работает';
             };
             xhr.onerror = xhr.ontimeout = function() {
                 statusEl.textContent = '○ Остановлен';
                 statusEl.style.color = '#666';
                 stopBtn.disabled = true;
-                startBtn.disabled = false;
-                startBtn.textContent = 'Открыть админку';
-                infoEl.textContent = 'Сервер не запущен. Откройте админку — он запустится автоматически.';
             };
             xhr.send();
         }, 500);

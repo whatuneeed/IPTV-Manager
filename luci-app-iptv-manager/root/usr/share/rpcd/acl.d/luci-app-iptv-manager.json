@@ -2,9 +2,9 @@
     "luci-app-iptv-manager": {
         "description": "Grant access to IPTV Manager",
         "read": {
-            "uci": [ "iptv" ],
+            "uci": [ "iptv", "network" ],
             "ubus": {
-                "file": [ "read" ],
+                "file": [ "read", "exec" ],
                 "luci": [ "getFeatures" ]
             }
         },
