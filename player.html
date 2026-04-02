@@ -42,6 +42,9 @@ video{max-width:100%;max-height:100%;background:#000;display:block}
 #sb-pl{padding:8px 12px;border-bottom:1px solid var(--border);display:none}
 #sb-pl input{width:100%;padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:5px;color:var(--text);font-size:12px;margin-bottom:6px}
 #sb-pl button{width:100%;padding:6px;background:var(--green);border:none;border-radius:5px;color:#fff;font-weight:600;cursor:pointer;font-size:12px}
+.fav-star{color:#64748b;font-size:14px;cursor:pointer;flex-shrink:0;transition:color .15s}
+.fav-star.on{color:#f59e0b}
+.fav-star:hover{color:#fbbf24}
 #ch-list{flex:1;overflow-y:auto}
 .ch{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;border-bottom:1px solid rgba(51,65,85,.4);transition:background .12s}
 .ch:hover{background:var(--hover)}
@@ -71,6 +74,7 @@ video{max-width:100%;max-height:100%;background:#000;display:block}
 <span class="now" id="now-ch"></span>
 <input type="text" id="url-in" placeholder="Поток или URL плейлиста...">
 <button class="btn-play" onclick="handleUrl()">▶</button>
+<button class="btn-icon" onclick="togglePip()" title="Картинка в картинке">⧉</button>
 <button class="btn-icon" onclick="toggleFs()" title="Полный экран">⛶</button>
 </div>
 <div id="video-wrap">
@@ -92,6 +96,7 @@ video{max-width:100%;max-height:100%;background:#000;display:block}
 </div>
 <div id="sb-tabs">
 <button class="on" onclick="tab('ch',this)">Каналы</button>
+<button onclick="tab('fav',this)">★ Избранное</button>
 <button onclick="tab('pl',this)">Плейлист</button>
 </div>
 <div id="sb-search">
@@ -117,7 +122,7 @@ var epgOv=document.getElementById('epg-overlay');
 var epgNow=document.getElementById('epg-now');
 var epgNext=document.getElementById('epg-next');
 var chList=document.getElementById('ch-list');
-var hls=null,channels=[],filtered=[],curIdx=-1,epgData={},curMode='ch';
+var hls=null,channels=[],filtered=[],curIdx=-1,epgData={},curMode='ch',favorites=[];
 
 function play(url,idx){
     if(!url)return;
@@ -184,7 +189,9 @@ function render(){
         var ch=filtered[i];
         var lh=ch.l?'<img src="'+esc(ch.l)+'" onerror="this.parentElement.innerHTML=\'📺\'">':'<span class="ph">📺</span>';
         var now=ch.i&&epgData[ch.i]?'<div class="ch-now">📡 '+esc(epgData[ch.i])+'</div>':'';
+        var isFav=favorites.indexOf(ch._r)>=0;
         h+='<div class="ch'+(ch._r===curIdx?' on':'')+'" onclick="play(\''+esc(ch.u).replace(/'/g,"\\'")+'\','+ch._r+')">';
+        h+='<span class="fav-star'+(isFav?' on':'')+'" onclick="event.stopPropagation();toggleFav('+ch._r+')">'+(isFav?'★':'☆')+'</span>';
         h+='<div class="ch-logo">'+lh+'</div>';
         h+='<div class="ch-info"><div class="ch-name">'+esc(ch.n)+'</div>';
         h+='<div class="ch-meta">'+esc(ch.g)+'</div>'+now+'</div></div>';
@@ -198,7 +205,10 @@ function filter(){
     filtered=[];
     for(var i=0;i<channels.length;i++){
         var ch=channels[i];
-        if((!g||ch.g===g)&&(!q||ch.n.toLowerCase().indexOf(q)>=0)){
+        var matchGroup=!g||ch.g===g;
+        var matchQuery=!q||ch.n.toLowerCase().indexOf(q)>=0;
+        var matchFav=curMode!=='fav'||favorites.indexOf(i)>=0;
+        if(matchGroup&&matchQuery&&matchFav){
             ch._r=i;filtered.push(ch);
         }
     }
@@ -214,10 +224,10 @@ function tab(m,btn){
     curMode=m;
     document.querySelectorAll('#sb-tabs button').forEach(function(b){b.classList.remove('on')});
     btn.classList.add('on');
-    document.getElementById('sb-search').style.display=m==='ch'?'':'none';
-    document.getElementById('sb-group').style.display=m==='ch'?'':'none';
+    document.getElementById('sb-search').style.display=(m==='ch'||m==='fav')?'':'none';
+    document.getElementById('sb-group').style.display=(m==='ch'||m==='fav')?'':'none';
     document.getElementById('sb-pl').style.display=m==='pl'?'':'none';
-    if(m==='ch')filter();
+    if(m==='ch'||m==='fav')filter();
 }
 
 function parseM3U(text){
@@ -324,8 +334,41 @@ function toggleFs(){
     else document.documentElement.requestFullscreen().catch(function(){});
 }
 
+function togglePip(){
+    if(!document.pictureInPictureElement){
+        if(vid.requestPictureInPicture){
+            vid.requestPictureInPicture().catch(function(e){
+                alert('PiP не поддерживается: '+e.message);
+            });
+        }else{
+            alert('Ваш браузер не поддерживает PiP');
+        }
+    }else{
+        document.exitPictureInPicture();
+    }
+}
+
+function toggleFav(idx){
+    var fi=favorites.indexOf(idx);
+    if(fi>=0){
+        favorites.splice(fi,1);
+    }else{
+        favorites.push(idx);
+    }
+    try{localStorage.setItem('iptv-favorites',JSON.stringify(favorites))}catch(e){}
+    render();
+}
+
+function loadFavorites(){
+    try{
+        var s=localStorage.getItem('iptv-favorites');
+        if(s)favorites=JSON.parse(s);
+    }catch(e){}
+}
+
 var params=new URLSearchParams(window.location.search);
 var sUrl=params.get('url'),sIdx=params.get('idx'),pUrl=params.get('pl');
+loadFavorites();
 if(pUrl){loadPlUrl(pUrl)}
 else if(sUrl){play(sUrl,sIdx!==null?parseInt(sIdx):-1);loadChannels()}
 else{loadChannels()}
