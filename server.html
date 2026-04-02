@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IPTV Manager — Сервер</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg,#f0f2f5);color:var(--text,#1a1a2e);padding:10px}
+[data-theme="openwrt"]{--bg:#1a1b26;--text:#c0caf5;--card:#24283b;--border:#3b4261;--primary:#7aa2f7;--success:#9ece6a;--danger:#f7768e}
+[data-theme="dark"]{--bg:#0a0e1a;--text:#e2e8f0;--card:#1e293b;--border:#334155;--primary:#3b82f6;--success:#22c55e;--danger:#ef4444}
+[data-theme="light"],body{--bg:#f0f2f5;--text:#1a1a2e;--card:#fff;--border:#e0e0e0;--primary:#1a73e8;--success:#1e8e3e;--danger:#d93025}
+.card{background:var(--card,#fff);border-radius:8px;padding:16px;border:1px solid var(--border,#e0e0e0);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+h2{font-size:18px;margin-bottom:4px}
+.desc{color:var(--text2,#666);font-size:12px;margin-bottom:16px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer}
+.btn-s{background:var(--primary,#1a73e8);color:#fff}.btn-s:hover{opacity:.85}
+.btn-d{background:var(--danger,#d93025);color:#fff}.btn-d:hover{opacity:.85}
+.btn:disabled{opacity:.5;cursor:default}
+.status{font-size:14px;font-weight:600}
+.on{color:var(--success,#1e8e3e)}
+.off{color:var(--text3,#888)}
+</style>
+</head>
+<body>
+<div class="card">
+<h2>Сервер</h2>
+<div class="desc">Управление IPTV сервером</div>
+<div class="row">
+<button class="btn btn-s" id="startBtn">Запустить</button>
+<button class="btn btn-d" id="stopBtn">Остановить</button>
+<span class="status" id="status">...</span>
+</div>
+</div>
+<script>
+var API='/cgi-bin/admin.cgi';
+var IPTV_CMD='/etc/iptv/IPTV-Manager.sh';
+
+function setStatus(running, msg) {
+    var el = document.getElementById('status');
+    el.textContent = running ? '\u25cf Запущен' : '\u25cb Остановлен';
+    el.className = 'status ' + (running ? 'on' : 'off');
+    document.getElementById('startBtn').disabled = false;
+    document.getElementById('stopBtn').disabled = !running;
+    document.getElementById('startBtn').textContent = running ? '\u2713 Работает' : 'Запустить';
+    document.getElementById('stopBtn').textContent = 'Остановить';
+}
+
+function checkStatus() {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', API + '?action=check_update', true);
+    xhr.timeout = 5000;
+    xhr.onload = function() {
+        setStatus(true);
+    };
+    xhr.onerror = function() {
+        setStatus(false);
+    };
+    xhr.ontimeout = function() {
+        setStatus(false);
+    };
+    xhr.send();
+}
+
+function execCmd(cmd, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('POST', API, true);
+    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.timeout = 15000;
+    xhr.onload = function() { try { cb(null, JSON.parse(xhr.responseText)); } catch(e) { cb(null, null); } };
+    xhr.onerror = function() { cb(null, null); };
+    xhr.ontimeout = function() { cb(null, null); };
+    xhr.send('action=exec_cmd&cmd=' + encodeURIComponent(cmd));
+}
+
+document.getElementById('startBtn').addEventListener('click', function() {
+    this.disabled = true;
+    this.textContent = 'Запуск...';
+    document.getElementById('status').textContent = 'Запуск...';
+    document.getElementById('status').className = 'status';
+    execCmd(IPTV_CMD + ' start', function() {
+        setTimeout(checkStatus, 4000);
+    });
+});
+
+document.getElementById('stopBtn').addEventListener('click', function() {
+    this.disabled = true;
+    this.textContent = 'Остановка...';
+    document.getElementById('status').textContent = 'Остановка...';
+    document.getElementById('status').className = 'status off';
+    execCmd(IPTV_CMD + ' stop', function() {
+        setTimeout(checkStatus, 2000);
+    });
+});
+
+// Auto-detect theme (same as admin.cgi)
+(function(){
+    if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt')}
+    else{var t=localStorage.getItem('iptv-theme');if(t)document.documentElement.setAttribute('data-theme',t)}
+})();
+
+checkStatus();
+</script>
+</body>
+</html>

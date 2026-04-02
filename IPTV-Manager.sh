@@ -109,6 +109,92 @@ detect_builtin_epg() {
 wget_opt() { local o="-q --timeout=15"; wget --help 2>&1 | grep -q "no-check-certificate" && o="$o --no-check-certificate"; echo "$o"; }
 
 # ==========================================
+# Генерация server.html
+# ==========================================
+generate_server_html() {
+    mkdir -p /www/iptv
+    cat > /www/iptv/server.html << 'SERVEREOF'
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>IPTV Server</title>
+<style>
+:root{--bg:#f0f2f5;--card:#fff;--text:#1a1a2e;--text2:#666;--border:#e0e0e0;--primary:#1a73e8;--primary-hover:#1557b0;--success:#1e8e3e;--danger:#d93025;--shadow:0 1px 3px rgba(0,0,0,.06);--btn-bg:#fafafa}
+[data-theme="dark"]{--bg:#0a0e1a;--card:#1e293b;--text:#e2e8f0;--text2:#94a3b8;--border:#334155;--primary:#3b82f6;--primary-hover:#2563eb;--success:#22c55e;--danger:#ef4444;--shadow:0 1px 3px rgba(0,0,0,.2);--btn-bg:#0f172a}
+[data-theme="openwrt"]{--bg:#1a1b26;--card:#24283b;--text:#c0caf5;--text2:#9aa5ce;--border:#3b4261;--primary:#7aa2f7;--primary-hover:#6893db;--success:#9ece6a;--danger:#f7768e;--shadow:0 1px 3px rgba(0,0,0,.2);--btn-bg:#1e2030}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
+.c{background:var(--card);border-radius:12px;padding:32px;border:1px solid var(--border);box-shadow:var(--shadow);text-align:center;max-width:360px;width:90%}
+h1{font-size:20px;margin-bottom:8px;color:var(--primary)}
+#status{font-size:14px;color:var(--text2);margin:16px 0;padding:12px;background:var(--btn-bg);border-radius:8px;border:1px solid var(--border)}
+.btns{display:flex;gap:10px;justify-content:center;margin-top:20px}
+.b{padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;color:#fff}
+.bs{background:var(--success)}.bs:hover{background:#137333}
+.bd{background:var(--danger)}.bd:hover{background:#b3261e}
+.b:disabled{opacity:.5;cursor:default}
+.p{font-size:11px;color:var(--text2);margin-top:16px}
+</style>
+</head>
+<body>
+<div class="c">
+<h1>IPTV Manager</h1>
+<div id="status">Загрузка...</div>
+<div class="btns">
+<button class="b bs" id="startBtn">Запустить</button>
+<button class="b bd" id="stopBtn">Остановить</button>
+</div>
+<p class="p">Управление IPTV сервером</p>
+</div>
+<script>
+(function(){
+var api='/cgi-bin/admin.cgi';
+if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt')}
+else{try{var t=localStorage.getItem('iptv-theme');if(t==='dark'||t==='openwrt')document.documentElement.setAttribute('data-theme',t)}catch(e){}}
+function qs(s){return document.querySelector(s)}
+function setStatus(m){qs('#status').textContent=m}
+function xhr(a,cb){
+var x=new XMLHttpRequest();
+x.open('POST',api,true);
+x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+x.onload=function(){try{cb(JSON.parse(x.responseText))}catch(e){cb({status:'error'})}};
+x.onerror=function(){cb({status:'error'})};
+x.send('action='+a);
+}
+function checkStatus(){
+xhr('server_status',function(r){
+if(r.status==='ok'){
+var o=r.output||'';
+setStatus('Сервер: '+(o.indexOf('работает')>=0||o.indexOf('running')>=0||o==='online'?'работает':'остановлен'));
+}else{setStatus('Неизвестно')}
+});
+}
+qs('#startBtn').onclick=function(){
+this.disabled=true;
+xhr('server_start',function(r){
+if(r.status==='ok'){setStatus('Запуск...');setTimeout(checkStatus,4000)}
+else{setStatus('Ошибка запуска')}
+qs('#startBtn').disabled=false;
+});
+};
+qs('#stopBtn').onclick=function(){
+this.disabled=true;
+xhr('server_stop',function(r){
+if(r.status==='ok'){setStatus('Остановка...');setTimeout(checkStatus,2000)}
+else{setStatus('Ошибка остановки')}
+qs('#stopBtn').disabled=false;
+});
+};
+checkStatus();
+})();
+</script>
+</body>
+</html>
+SERVEREOF
+}
+
+# ==========================================
 # Генерация CGI
 # ==========================================
 generate_cgi() {
@@ -496,11 +582,24 @@ if [ -n "$ACTION" ]; then
             else
                 printf '{"status":"ok","update":false,"current":"%s","latest":""}' "$CUR"
             fi ;;
-        stop_server)
-            kill $(pgrep -f "uhttpd.*:8082" 2>/dev/null) 2>/dev/null
-            rm -f /var/run/iptv-httpd.pid
-            printf '{"status":"ok","message":"Сервер остановлен"}' ;;
-        *) printf '{"status":"error","message":"Неизвестное действие"}' ;;
+        exec_cmd)
+            CMD=$(echo "$POST_DATA" | sed -n 's/.*cmd=\([^&]*\).*/\1/p')
+            CMD=$(echo "$CMD" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g;s/%20/ /g')
+            if [ -n "$CMD" ]; then
+                sh -c "$CMD" >/dev/null 2>&1
+                printf '{"status":"ok"}'
+            else
+                printf '{"status":"error","message":"Нет команды"}'
+            fi ;;
+        server_start)
+            /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1
+            printf '{"status":"ok"}' ;;
+        server_stop)
+            /etc/iptv/IPTV-Manager.sh stop >/dev/null 2>&1
+            printf '{"status":"ok"}' ;;
+        server_status)
+            _out=$(/etc/iptv/IPTV-Manager.sh status 2>/dev/null)
+            printf '{"status":"ok","output":"%s"}' "$_out" ;;
     esac
     exit 0
 fi
@@ -1222,6 +1321,7 @@ EPGEOF
 <?xml version="1.0" encoding="UTF-8"?>
 XMLEOF
 
+    generate_server_html
     generate_player
 }
 
@@ -1690,6 +1790,7 @@ stop_scheduler() { kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/nu
 # ==========================================
 start_http_server() {
     mkdir -p /www/iptv/cgi-bin
+    cp "$IPTV_DIR/server.html" /www/iptv/server.html 2>/dev/null || true
     [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
     generate_cgi
     if [ -f "$HTTPD_PID" ] && kill -0 $(cat "$HTTPD_PID") 2>/dev/null; then
