@@ -63,8 +63,8 @@ return view.extend({
                 statusEl.textContent = 'Остановка...';
 
                 callExec({
-                    command: '/etc/init.d/iptv-manager',
-                    params: ['stop']
+                    command: '/bin/sh',
+                    params: ['-c', 'kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; rm -f /var/run/iptv-httpd.pid']
                 }).then(function() {
                     return new Promise(function(r) { setTimeout(r, 1500); });
                 }).then(function() {
