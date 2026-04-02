@@ -29,6 +29,26 @@ mkdir -p "$IPTV_DIR"
 [ -f "$FAVORITES_FILE" ] || echo "[]" > "$FAVORITES_FILE"
 [ -f "$SECURITY_FILE" ] || printf 'ADMIN_USER=""\nADMIN_PASS=""\nAPI_TOKEN=""\n' > "$SECURITY_FILE"
 
+# Auto-update on startup
+_auto_update() {
+    local latest=$(wget -q --timeout=10 --no-check-certificate -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null | head -10 | grep -o 'IPTV_MANAGER_VERSION="[^"]*"' | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
+    if [ -n "$latest" ] && [ "$latest" != "$IPTV_MANAGER_VERSION" ]; then
+        echo -e "${CYAN}Доступна версия v$latest (у вас v$IPTV_MANAGER_VERSION). Обновляю...${NC}"
+        local tmp="/tmp/IPTV-Manager-new.sh"
+        if wget -q --timeout=15 --no-check-certificate -O "$tmp" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$tmp" ]; then
+            cp "$tmp" "/etc/iptv/IPTV-Manager.sh"
+            chmod +x "/etc/iptv/IPTV-Manager.sh"
+            rm -f "$tmp"
+            exec sh "/etc/iptv/IPTV-Manager.sh"
+        fi
+    fi
+}
+# Only auto-update if running from /etc/iptv (on router)
+case "$0" in /etc/iptv/*|/tmp/IPTV*) _auto_update ;; esac
+
+# Clean old/invalid CGI before generating
+rm -rf /www/iptv
+
 echo_color() { echo -e "${MAGENTA}$1${NC}"; }
 echo_success() { echo -e "${GREEN}$1${NC}"; }
 echo_error() { echo -e "${RED}$1${NC}"; }
@@ -2002,6 +2022,13 @@ INITEOF
     read luci_choice </dev/tty
     if [ "$luci_choice" = "1" ]; then
         echo_info "Скачиваем LuCI-плагин..."
+        rm -f /www/luci-static/resources/view/iptv-manager/playlist.js
+        rm -f /www/luci-static/resources/view/iptv-manager/epg.js
+        rm -f /www/luci-static/resources/view/iptv-manager/schedule.js
+        rm -f /www/luci-static/resources/view/iptv-manager/security.js
+        rm -f /www/luci-static/resources/view/iptv-manager/channels.js
+        rm -f /usr/share/luci/menu.d/luci-app-iptv-manager.json
+        rm -f /usr/share/rpcd/acl.d/luci-app-iptv-manager.json
         local luci_base="https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/luci-app-iptv-manager"
         local luci_files="htdocs/luci-static/resources/view/iptv-manager/iptv.js htdocs/luci-static/resources/view/iptv-manager/player.js root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
         local total=0
