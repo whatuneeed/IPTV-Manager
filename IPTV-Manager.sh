@@ -2469,4 +2469,10 @@ menu_update() {
     PAUSE
 }
 
+# Handle start/stop commands (for LuCI)
+case "$1" in
+    start) stop_scheduler; stop_http_server; sleep 0.5; start_http_server; exit 0 ;;
+    stop) stop_http_server; stop_scheduler; exit 0 ;;
+esac
+
 while true; do show_menu; done

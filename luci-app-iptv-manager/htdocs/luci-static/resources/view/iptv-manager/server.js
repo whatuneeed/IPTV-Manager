@@ -24,14 +24,8 @@ return view.extend({
                 statusEl.textContent = 'Запуск...';
 
                 fs.exec_direct('/bin/sh', ['-c',
-                    'mkdir -p /www/iptv; ' +
-                    'mkdir -p /www/iptv/cgi-bin; ' +
-                    'echo "#EXTM3U" > /www/iptv/playlist.m3u 2>/dev/null; ' +
-                    'cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null; ' +
-                    'kill $(pgrep -f "uhttpd.*:8082") 2>/dev/null; ' +
-                    'sleep 1; ' +
-                    'uhttpd -p 0.0.0.0:' + port + ' -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" & ' +
-                    'sleep 1'
+                    'sh /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 & ' +
+                    'sleep 3'
                 ]).then(function() {
                     return checkStatus(2000);
                 }).catch(function(e) {
@@ -52,8 +46,8 @@ return view.extend({
                 statusEl.textContent = 'Остановка...';
 
                 fs.exec_direct('/bin/sh', ['-c',
-                    'kill $(pgrep -f "uhttpd.*:8082") 2>/dev/null; ' +
-                    'rm -f /var/run/iptv-httpd.pid'
+                    'sh /etc/iptv/IPTV-Manager.sh stop >/dev/null 2>&1 & ' +
+                    'sleep 1'
                 ]).then(function() {
                     return checkStatus(1000);
                 }).catch(function() {
