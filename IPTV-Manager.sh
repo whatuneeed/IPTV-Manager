@@ -6,7 +6,7 @@ SELF="$0"
 # IPTV Manager для OpenWrt v3.11
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.11"
+IPTV_MANAGER_VERSION="3.12"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -179,7 +179,7 @@ generate_cgi() {
     # --- CGI файл (без раскрытия переменных) ---
     cat > /www/iptv/cgi-bin/admin.cgi << 'CGIEOF'
 #!/bin/sh
-IPTV_MANAGER_VERSION="3.11"
+IPTV_MANAGER_VERSION="3.12"
 PL="/etc/iptv/playlist.m3u"
 EC="/etc/iptv/iptv.conf"
 EGZ="/tmp/iptv-epg.xml.gz"
