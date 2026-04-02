@@ -1926,15 +1926,19 @@ setup_autostart() {
         cat > /etc/init.d/iptv-manager <<'INITEOF'
 #!/bin/sh /etc/rc.common
 START=99
+IPTV_DIR=/etc/iptv
 start() {
     mkdir -p /www/iptv/cgi-bin
-    [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u
-    [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml
-    [ -f /etc/iptv/IPTV-Manager.sh ] && . /etc/iptv/IPTV-Manager.sh 2>/dev/null
-    uhttpd -f -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &
-    [ -f /etc/iptv/schedule.conf ] && { . /etc/iptv/schedule.conf; [ "${PLAYLIST_INTERVAL:-0}" -gt 0 ] || [ "${EPG_INTERVAL:-0}" -gt 0 ] && /bin/sh /tmp/iptv-scheduler.sh &; }
+    [ -f $IPTV_DIR/playlist.m3u ] && cp $IPTV_DIR/playlist.m3u /www/iptv/playlist.m3u
+    [ -f $IPTV_DIR/epg.xml ] && cp $IPTV_DIR/epg.xml /www/iptv/epg.xml
+    kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+    sleep 0.5
+    uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" -S &
+    sleep 0.5
+    pgrep -f "uhttpd.*8082" | head -1 > /var/run/iptv-httpd.pid 2>/dev/null
+    [ -f $IPTV_DIR/schedule.conf ] && { . $IPTV_DIR/schedule.conf; [ "${PLAYLIST_INTERVAL:-0}" -gt 0 ] || [ "${EPG_INTERVAL:-0}" -gt 0 ] && /bin/sh /tmp/iptv-scheduler.sh &; }
 }
-stop() { kill $(pgrep -f "uhttpd.*8082" 2>/dev/null) 2>/dev/null; kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/null; }
+stop() { kill $(pgrep -f "uhttpd.*8082" 2>/dev/null) 2>/dev/null; kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/null; rm -f /var/run/iptv-httpd.pid; }
 INITEOF
         chmod +x /etc/init.d/iptv-manager
         /etc/init.d/iptv-manager enable 2>/dev/null
