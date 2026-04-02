@@ -10,16 +10,19 @@ return view.extend({
     render: function() {
         var lan_ip = uci.get('network', 'lan', 'ipaddr') || '192.168.1.1';
         var port = '8082';
+        var playerUrl = 'http://' + lan_ip + ':' + port + '/player.html';
 
         var frame = E('iframe', {
-            'src': 'http://' + lan_ip + ':' + port + '/player.html',
+            'src': playerUrl,
             'style': 'width:100%;height:calc(100vh - 140px);border:none;',
-            'frameborder': '0'
+            'frameborder': '0',
+            'allowfullscreen': 'true',
+            'allow': 'fullscreen; picture-in-picture'
         });
 
         return E([
-            E('h2', {}, _('HLS Плеер')),
-            E('p', {}, _('Просмотр IPTV каналов прямо в браузере')),
+            E('h2', {}, _('Плеер')),
+            E('p', {}, _('Просмотр IPTV каналов')),
             frame
         ]);
     }

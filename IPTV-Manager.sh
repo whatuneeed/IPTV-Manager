@@ -496,6 +496,10 @@ if [ -n "$ACTION" ]; then
             else
                 printf '{"status":"ok","update":false,"current":"%s","latest":""}' "$CUR"
             fi ;;
+        stop_server)
+            kill $(pgrep -f "uhttpd.*:8082" 2>/dev/null) 2>/dev/null
+            rm -f /var/run/iptv-httpd.pid
+            printf '{"status":"ok","message":"Сервер остановлен"}' ;;
         *) printf '{"status":"error","message":"Неизвестное действие"}' ;;
     esac
     exit 0

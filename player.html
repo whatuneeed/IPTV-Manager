@@ -333,8 +333,22 @@ function showEpg(id){
 }
 
 function toggleFs(){
-    if(document.fullscreenElement)document.exitFullscreen();
-    else document.documentElement.requestFullscreen().catch(function(){});
+    if(document.fullscreenElement){
+        document.exitFullscreen();
+    } else if(window.parent!==window){
+        var iframes=window.parent.document.querySelectorAll('iframe');
+        for(var i=0;i<iframes.length;i++){
+            try{
+                if(iframes[i].contentWindow===window){
+                    iframes[i].requestFullscreen().catch(function(){});
+                    return;
+                }
+            }catch(e){}
+        }
+        document.documentElement.requestFullscreen().catch(function(){});
+    } else {
+        document.documentElement.requestFullscreen().catch(function(){});
+    }
 }
 
 function togglePip(){
