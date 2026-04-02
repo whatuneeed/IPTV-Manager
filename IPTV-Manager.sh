@@ -1923,22 +1923,27 @@ setup_autostart() {
         rm -f /etc/init.d/iptv-manager
         echo_success "Автозапуск отключён"
     else
-        cat > /etc/init.d/iptv-manager <<'INITEOF'
+        cat > /etc/init.d/iptv-manager << 'INITEOF'
 #!/bin/sh /etc/rc.common
 START=99
-IPTV_DIR=/etc/iptv
-start() {
+USE_PROCD=1
+start_service() {
     mkdir -p /www/iptv/cgi-bin
-    [ -f $IPTV_DIR/playlist.m3u ] && cp $IPTV_DIR/playlist.m3u /www/iptv/playlist.m3u
-    [ -f $IPTV_DIR/epg.xml ] && cp $IPTV_DIR/epg.xml /www/iptv/epg.xml
-    kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
-    sleep 0.5
-    uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" -S &
-    sleep 0.5
-    pgrep -f "uhttpd.*8082" | head -1 > /var/run/iptv-httpd.pid 2>/dev/null
-    [ -f $IPTV_DIR/schedule.conf ] && { . $IPTV_DIR/schedule.conf; [ "${PLAYLIST_INTERVAL:-0}" -gt 0 ] || [ "${EPG_INTERVAL:-0}" -gt 0 ] && /bin/sh /tmp/iptv-scheduler.sh &; }
+    [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null
+    [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml 2>/dev/null
+    # Generate CGI if script exists
+    if [ -f /etc/iptv/IPTV-Manager.sh ]; then
+        /etc/iptv/IPTV-Manager.sh --server 2>/dev/null
+    fi
+    procd_open_instance
+    procd_set_param command uhttpd -f -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i '.cgi=/bin/sh'
+    procd_set_param pidfile /var/run/iptv-httpd.pid
+    procd_set_param respawn
+    procd_set_param stdout 1
+    procd_set_param stderr 1
+    procd_close_instance
+    [ -f /etc/iptv/schedule.conf ] && { . /etc/iptv/schedule.conf; [ "${PLAYLIST_INTERVAL:-0}" -gt 0 ] || [ "${EPG_INTERVAL:-0}" -gt 0 ] && /bin/sh /tmp/iptv-scheduler.sh &; }
 }
-stop() { kill $(pgrep -f "uhttpd.*8082" 2>/dev/null) 2>/dev/null; kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/null; rm -f /var/run/iptv-httpd.pid; }
 INITEOF
         chmod +x /etc/init.d/iptv-manager
         /etc/init.d/iptv-manager enable 2>/dev/null
@@ -2473,10 +2478,25 @@ menu_update() {
     PAUSE
 }
 
-# Handle start/stop commands (for LuCI)
+# Handle start/stop commands (for LuCI init script and manual calls)
 case "$1" in
-    start) stop_scheduler; stop_http_server; sleep 0.5; start_http_server; exit 0 ;;
+    start)
+        stop_http_server
+        sleep 0.5
+        generate_cgi
+        # Start uhttpd in background (not -f mode)
+        mkdir -p /www/iptv/cgi-bin
+        [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
+        nohup uhttpd -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
+        sleep 2
+        pgrep -f "uhttpd.*8082" | head -1 > /var/run/iptv-httpd.pid 2>/dev/null
+        exit 0
+        ;;
     stop) stop_http_server; stop_scheduler; exit 0 ;;
+    --server)
+        # Called by init script without interactive menu
+        stop_http_server; sleep 0.5; generate_cgi; exit 0
+        ;;
 esac
 
 while true; do show_menu; done

@@ -16,7 +16,6 @@ return view.extend({
     },
 
     render: function() {
-        var port = '8082';
         var statusEl = E('span', { 'style': 'color:#666;font-size:14px;font-weight:600' }, 'Проверка...');
 
         var startBtn = E('button', {
@@ -27,17 +26,18 @@ return view.extend({
                 statusEl.style.color = '#1a73e8';
                 statusEl.textContent = 'Запуск...';
 
+                // Generate CGI first, then start init script
                 callExec({
                     command: '/bin/sh',
                     params: ['-c',
-                        'kill $(pgrep -f "uhttpd.*:' + port + '") 2>/dev/null; sleep 1; ' +
                         'cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null; ' +
-                        'nohup uhttpd -p 0.0.0.0:' + port + ' -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 & sleep 2'
+                        '/etc/init.d/iptv-manager enable; ' +
+                        '/etc/init.d/iptv-manager start'
                     ]
                 }).then(function() {
-                    setTimeout(checkStatus, 2000);
+                    setTimeout(checkStatus, 3000);
                 }).catch(function() {
-                    setTimeout(checkStatus, 2000);
+                    setTimeout(checkStatus, 3000);
                 });
             }
         }, 'Запустить');
@@ -52,19 +52,28 @@ return view.extend({
 
                 callExec({
                     command: '/bin/sh',
-                    params: ['-c', 'kill $(pgrep -f "uhttpd.*:' + port + '") 2>/dev/null; sleep 1']
+                    params: ['-c', '/etc/init.d/iptv-manager stop']
                 }).then(function() {
-                    setTimeout(checkStatus, 1000);
+                    setTimeout(checkStatus, 2000);
                 }).catch(function() {
-                    setTimeout(checkStatus, 1000);
+                    setTimeout(checkStatus, 2000);
                 });
             }
         }, 'Остановить');
 
         function checkStatus() {
-            callExec({ command: '/bin/sh', params: ['-c', 'pgrep -c "uhttpd.*:' + port + '" 2>/dev/null'] }).then(function(res) {
-                var n = parseInt(((res.stdout || '0') + '').trim());
-                if (n > 0) {
+            callExec({
+                command: '/bin/sh',
+                params: ['-c', 'ubus call service list 2>/dev/null | grep -c ipts-manager']
+            }).then(function(res) {
+                // procd-based service — check if running
+                return callExec({
+                    command: '/bin/sh',
+                    params: ['-c', 'pgrep uhttpd']
+                });
+            }).then(function(res) {
+                var out = (res.stdout || '').trim();
+                if (out.length > 0) {
                     statusEl.textContent = '● Запущен';
                     statusEl.style.color = '#22c55e';
                     startBtn.textContent = '✓ Работает';
