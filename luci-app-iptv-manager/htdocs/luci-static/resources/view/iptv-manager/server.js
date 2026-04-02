@@ -2,7 +2,6 @@
 'require view';
 'require uci';
 'require rpc';
-'require fs';
 
 var callExec = rpc.declare({
     object: 'file',
@@ -21,29 +20,10 @@ return view.extend({
             command: '/bin/sh',
             params: ['-c', 'wget -q -O /dev/null --timeout=2 http://127.0.0.1:8082/ 2>/dev/null']
         }).then(function(res) {
-            return res && res.code === 0;
+            return res.code === 0;
         }).catch(function() {
             return false;
         });
-    },
-
-    _createInitScript: function() {
-        var script = '#!/bin/sh /etc/rc.common\n' +
-            'START=99\n' +
-            'USE_PROCD=1\n' +
-            'start_service() {\n' +
-            '    mkdir -p /www/iptv/cgi-bin\n' +
-            '    cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null\n' +
-            '    [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml 2>/dev/null\n' +
-            '    procd_open_instance\n' +
-            '    procd_set_param command uhttpd -f -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh"\n' +
-            '    procd_set_param pidfile /var/run/iptv-httpd.pid\n' +
-            '    procd_set_param stdout 1\n' +
-            '    procd_set_param stderr 1\n' +
-            '    procd_close_instance\n' +
-            '}\n' +
-            'stop() { kill $(pgrep -f "uhttpd.*8082" 2>/dev/null) 2>/dev/null; rm -f /var/run/iptv-httpd.pid; }\n';
-        return fs.write('/etc/init.d/iptv-manager', script, 493);
     },
 
     render: function(data) {
@@ -58,11 +38,32 @@ return view.extend({
                 statusEl.style.color = '#1a73e8';
                 statusEl.textContent = 'Запуск...';
 
-                self._createInitScript().then(function() {
-                    return callExec({
-                        command: '/bin/sh',
-                        params: ['-c', '/etc/init.d/iptv-manager enable && /etc/init.d/iptv-manager restart']
-                    });
+                var cmd = [
+                    'cat > /etc/init.d/iptv-manager <<INITSCRIPT',
+                    '#!/bin/sh /etc/rc.common',
+                    'START=99',
+                    'USE_PROCD=1',
+                    'start_service() {',
+                    '    mkdir -p /www/iptv/cgi-bin',
+                    '    cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null',
+                    '    [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml 2>/dev/null',
+                    '    procd_open_instance',
+                    '    procd_set_param command uhttpd -f -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh"',
+                    '    procd_set_param pidfile /var/run/iptv-httpd.pid',
+                    '    procd_set_param stdout 1',
+                    '    procd_set_param stderr 1',
+                    '    procd_close_instance',
+                    '}',
+                    'stop() { kill $(pgrep -f "uhttpd.*8082" 2>/dev/null) 2>/dev/null; rm -f /var/run/iptv-httpd.pid; }',
+                    'INITSCRIPT',
+                    'chmod 755 /etc/init.d/iptv-manager',
+                    '/etc/init.d/iptv-manager enable',
+                    '/etc/init.d/iptv-manager restart'
+                ].join(' && ');
+
+                callExec({
+                    command: '/bin/sh',
+                    params: ['-c', cmd]
                 }).then(function() {
                     return new Promise(function(r) { setTimeout(r, 3000); });
                 }).then(function() {
