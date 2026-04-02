@@ -38,32 +38,9 @@ return view.extend({
                 statusEl.style.color = '#1a73e8';
                 statusEl.textContent = 'Запуск...';
 
-                var cmd = [
-                    'cat > /etc/init.d/iptv-manager <<INITSCRIPT',
-                    '#!/bin/sh /etc/rc.common',
-                    'START=99',
-                    'USE_PROCD=1',
-                    'start_service() {',
-                    '    mkdir -p /www/iptv/cgi-bin',
-                    '    cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null',
-                    '    [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml 2>/dev/null',
-                    '    procd_open_instance',
-                    '    procd_set_param command uhttpd -f -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh"',
-                    '    procd_set_param pidfile /var/run/iptv-httpd.pid',
-                    '    procd_set_param stdout 1',
-                    '    procd_set_param stderr 1',
-                    '    procd_close_instance',
-                    '}',
-                    'stop() { kill $(pgrep -f "uhttpd.*8082" 2>/dev/null) 2>/dev/null; rm -f /var/run/iptv-httpd.pid; }',
-                    'INITSCRIPT',
-                    'chmod 755 /etc/init.d/iptv-manager',
-                    '/etc/init.d/iptv-manager enable',
-                    '/etc/init.d/iptv-manager restart'
-                ].join(' && ');
-
                 callExec({
-                    command: '/bin/sh',
-                    params: ['-c', cmd]
+                    command: '/etc/init.d/iptv-manager',
+                    params: ['start']
                 }).then(function() {
                     return new Promise(function(r) { setTimeout(r, 3000); });
                 }).then(function() {
@@ -85,8 +62,8 @@ return view.extend({
                 statusEl.textContent = 'Остановка...';
 
                 callExec({
-                    command: '/bin/sh',
-                    params: ['-c', '/etc/init.d/iptv-manager stop']
+                    command: '/etc/init.d/iptv-manager',
+                    params: ['stop']
                 }).then(function() {
                     return new Promise(function(r) { setTimeout(r, 1500); });
                 }).then(function() {
