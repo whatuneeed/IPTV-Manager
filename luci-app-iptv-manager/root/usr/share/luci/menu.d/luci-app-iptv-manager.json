@@ -24,5 +24,13 @@
             "type": "view",
             "path": "iptv-manager/player"
         }
+    },
+    "admin/services/iptv-manager/server": {
+        "title": "Сервер",
+        "order": 3,
+        "action": {
+            "type": "view",
+            "path": "iptv-manager/server"
+        }
     }
 }
