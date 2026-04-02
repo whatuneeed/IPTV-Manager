@@ -1,15 +1,16 @@
-# IPTV Manager для OpenWrt v3.10
+# IPTV Manager для OpenWrt v3.11
 
 Скрипт для настройки IPTV на роутере OpenWrt с веб-админ панелью, встроенным HLS-плеером, EPG телепрограммой и расписанием обновлений.
 
 ## Возможности
 
+- **LuCI-плагин** — полная интеграция в веб-интерфейс OpenWrt (Services → IPTV Manager)
 - **Первоначальная настройка** — пошаговый визард (плейлист, EPG, расписание, автозапуск)
 - **Сервер без плейлиста** — запускается сразу, настройка через админку
 - Загрузка плейлиста по ссылке (M3U/M3U8), из файла или от провайдера
 - **Название плейлиста** — произвольное имя для отображения в статистике
 - **Авто-обнаружение EPG** — автоматически находит ссылку EPG из заголовка плейлиста (`url-tvg=`)
-- **Гибридный EPG** — хранится в RAM (/tmp), не занимает флеш-память роутера
+- **Гибридный EPG** — хранится в RAM (/tmp) в формате gz (~15MB), не занимает флеш-память
 - **EPG телепрограмма** — загрузка и раздача XMLTV, авто-распаковка gzip, динамическая таблица в админке
 - **Проверка каналов** — проверка доступности потоков прямо из админки
 - **Избранное** — отмечайте любимые каналы и быстро фильтруйте их
@@ -126,6 +127,63 @@ sh <(wget -O - https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IP
 Enter) Выход
 ```
 
+## LuCI-плагин (интеграция в OpenWrt)
+
+Плагин `luci-app-iptv-manager` добавляет IPTV Manager в веб-интерфейс OpenWrt как нативный раздел **Services → IPTV Manager**.
+
+### Структура плагина
+
+```
+luci-app-iptv-manager/
+├── Makefile                          # Сборка OpenWrt package
+├── luasrc/
+│   ├── controller/iptv-manager.lua   # Контроллер (маршруты)
+│   ├── model/cbi/iptv-manager/       # CBI-модели настроек
+│   │   ├── playlist.lua              # Плейлист (URL, файл, провайдер)
+│   │   ├── epg.lua                   # EPG (URL)
+│   │   ├── schedule.lua              # Расписание обновлений
+│   │   └── security.lua              # Безопасность (пароль, токен)
+│   └── view/iptv-manager/            # Шаблоны представлений
+│       ├── channels.htm              # Каналы (iframe админки)
+│       └── player.htm                # Плеер (iframe)
+└── root/
+    ├── etc/uci-defaults/             # Инициализация при установке
+    └── usr/share/
+        ├── luci/menu.d/              # LuCI меню (OpenWrt 24+)
+        └── rpcd/acl.d/               # ACL права доступа
+```
+
+### Установка плагина
+
+**Способ 1: Сборка из исходников (рекомендуется)**
+
+```sh
+# В дереве сборки OpenWrt:
+git clone https://github.com/whatuneeed/IPTV-Manager.git package/luci-app-iptv-manager
+make menuconfig    # LuCI → Applications → luci-app-iptv-manager
+make package/luci-app-iptv-manager/compile
+```
+
+**Способ 2: Ручная установка**
+
+```sh
+# Скопируйте файлы на роутер:
+scp -r luci-app-iptv-manager/luasrc/* /usr/lib/lua/luci/
+scp -r luci-app-iptv-manager/root/* /
+/etc/init.d/rpcd restart
+```
+
+### Вкладки плагина
+
+| Вкладка | Описание |
+|---------|----------|
+| **Плейлист** | CBI-форма: URL, файл, провайдер, название |
+| **Телепрограмма** | CBI-форма: URL EPG |
+| **Расписание** | CBI-форма: интервалы обновления |
+| **Безопасность** | CBI-форма: пароль, API токен |
+| **Каналы** | iframe: полная админка (таблица, проверка, редактирование) |
+| **Плеер** | iframe: HLS-плеер с каналами |
+
 ## Структура файлов
 
 ```
@@ -134,15 +192,20 @@ Enter) Выход
 ├── playlist.m3u        # Текущий плейлист
 ├── provider.conf       # Данные провайдера
 ├── epg.conf            # Конфигурация EPG
-├── epg.xml             # Файл телепрограммы
-└── schedule.conf       # Расписание обновлений
+├── schedule.conf       # Расписание обновлений
+├── favorites.json      # Избранные каналы
+└── security.conf       # Пароль и API токен
+
+/tmp/
+└── iptv-epg.xml.gz     # EPG в RAM (сжатый, ~15MB)
 
 /www/iptv/
 ├── cgi-bin/admin.cgi   # Веб-админка
+├── cgi-bin/epg.cgi     # EPG прокси (стриминг из gz)
 ├── player.html         # HLS-плеер
 ├── channels.json       # JSON-список каналов
 ├── playlist.m3u        # Плейлист для раздачи
-└── epg.xml             # EPG для раздачи
+└── epg.xml             # Ссылка на ECG прокси
 ```
 
 ## Популярные EPG источники
@@ -158,6 +221,15 @@ Enter) Выход
 1. Сохранит её как источник EPG
 2. Скачает телепрограмму при загрузке плейлиста
 3. Отобразит уведомление в админке
+
+## Изменения в v3.11
+
+- **EPG хранится только в gz** — `/tmp/iptv-epg.xml.gz` (~15MB RAM), без распаковки
+- **Стриминг EPG** — `epg.cgi` отдаёт XML через `gunzip -c`, буфер ~32KB
+- **Парсинг «Сейчас играет» из gz** — `gunzip -c | awk | head`, ~2MB RAM
+- **LuCI-плагин** — полная интеграция в OpenWrt (Services → IPTV Manager)
+- **CBI-формы** — нативные настройки плейлиста, EPG, расписания, безопасности
+- **iframe-вкладки** — каналы и плеер встроены в LuCI
 
 ## Изменения в v3.10
 

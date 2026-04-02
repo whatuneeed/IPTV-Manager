@@ -1,0 +1,9 @@
+#!/bin/sh
+# Add iptv config section if not exists
+uci get iptv.main >/dev/null 2>&1 || uci set iptv.main=iptv
+uci commit iptv
+
+# Set ACL permissions
+chmod 644 /usr/share/rpcd/acl.d/luci-app-iptv-manager.json 2>/dev/null
+
+exit 0

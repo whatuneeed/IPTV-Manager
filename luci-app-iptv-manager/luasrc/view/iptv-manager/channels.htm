@@ -1,0 +1,14 @@
+<%
+local uci = require "luci.model.uci".cursor()
+local lan_ip = uci:get("network", "lan", "ipaddr") or "192.168.1.1"
+local port = "8082"
+-%>
+<%+header%>
+<div class="cbi-map">
+    <h2><%:Каналы%></h2>
+    <p><%:Управление каналами, проверка доступности, редактирование%></p>
+</div>
+<div style="width:100%;height:calc(100vh - 200px);border:none;">
+    <iframe src="http://<%=lan_ip%>:<%=port%>/cgi-bin/admin.cgi" style="width:100%;height:100%;border:none;" frameborder="0"></iframe>
+</div>
+<%+footer%>

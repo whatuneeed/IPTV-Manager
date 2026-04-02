@@ -1,0 +1,36 @@
+{
+    "admin/services/iptv-manager": {
+        "title": "IPTV Manager",
+        "order": 30,
+        "action": {
+            "type": "firstchild"
+        },
+        "depends": {
+            "acl": [ "luci-app-iptv-manager" ]
+        }
+    },
+    "admin/services/iptv-manager/playlist": {
+        "title": "Плейлист",
+        "order": 1
+    },
+    "admin/services/iptv-manager/epg": {
+        "title": "Телепрограмма",
+        "order": 2
+    },
+    "admin/services/iptv-manager/schedule": {
+        "title": "Расписание",
+        "order": 3
+    },
+    "admin/services/iptv-manager/security": {
+        "title": "Безопасность",
+        "order": 4
+    },
+    "admin/services/iptv-manager/channels": {
+        "title": "Каналы",
+        "order": 5
+    },
+    "admin/services/iptv-manager/player": {
+        "title": "Плеер",
+        "order": 6
+    }
+}
