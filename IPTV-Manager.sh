@@ -1,9 +1,9 @@
 #!/bin/sh
 # ==========================================
-# IPTV Manager для OpenWrt v3.9
+# IPTV Manager для OpenWrt v3.10
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.9"
+IPTV_MANAGER_VERSION="3.10"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -12,7 +12,7 @@ IPTV_DIR="/etc/iptv"
 PLAYLIST_FILE="$IPTV_DIR/playlist.m3u"
 CONFIG_FILE="$IPTV_DIR/iptv.conf"
 PROVIDER_CONFIG="$IPTV_DIR/provider.conf"
-EPG_FILE="$IPTV_DIR/epg.xml"
+EPG_FILE="/tmp/iptv-epg.xml"
 EPG_CONFIG="$IPTV_DIR/epg.conf"
 SCHEDULE_FILE="$IPTV_DIR/schedule.conf"
 FAVORITES_FILE="$IPTV_DIR/favorites.json"
@@ -66,6 +66,7 @@ generate_cgi() {
     local psz=$(file_size "$PLAYLIST_FILE")
     local esz=$(file_size "$EPG_FILE")
     local purl=""; [ "$PLAYLIST_TYPE" = "url" ] && purl="$PLAYLIST_URL"
+    local pname="${PLAYLIST_NAME:-}"
     local eurl=""; [ -n "$EPG_URL" ] && eurl="$EPG_URL"
     local pi="${PLAYLIST_INTERVAL:-0}"
     local ei="${EPG_INTERVAL:-0}"
@@ -134,10 +135,10 @@ generate_cgi() {
     # --- CGI файл (без раскрытия переменных) ---
     cat > /www/iptv/cgi-bin/admin.cgi << 'CGIEOF'
 #!/bin/sh
-IPTV_MANAGER_VERSION="3.9"
+IPTV_MANAGER_VERSION="3.10"
 PL="/etc/iptv/playlist.m3u"
 EC="/etc/iptv/iptv.conf"
-EF="/etc/iptv/epg.xml"
+EF="/tmp/iptv-epg.xml"
 EXC="/etc/iptv/epg.conf"
 SC="/etc/iptv/schedule.conf"
 FAV="/etc/iptv/favorites.json"
@@ -241,14 +242,28 @@ if [ -n "$ACTION" ]; then
         refresh_epg)
             . "$EXC" 2>/dev/null
             if [ -n "$EPG_URL" ]; then
-                wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EF" "$EPG_URL" 2>/dev/null && [ -s "$EF" ] && {
-                    M=$(hexdump -n 2 -e '2/1 "%02x"' "$EF" 2>/dev/null)
-                    [ "$M" = "1f8b" ] && { gunzip -f "$EF" 2>/dev/null; mv "${EF%.gz}" "$EF" 2>/dev/null; }
-                    case "$EPG_URL" in *.gz) gunzip -f "$EF" 2>/dev/null; mv "${EF%.gz}" "$EF" 2>/dev/null ;; esac
-                    SZ=$(wc -c < "$EF")
-                    cp "$EF" /www/iptv/epg.xml
-                    printf '{"status":"ok","message":"EPG обновлён! Размер: %s KB"}' "$((SZ / 1024))"
-                } || printf '{"status":"error","message":"Ошибка загрузки EPG"}'
+                TD="/tmp/epg-dl.tmp"
+                wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$TD" "$EPG_URL" 2>/dev/null && [ -s "$TD" ] && {
+                    M=$(hexdump -n 2 -e '2/1 "%02x"' "$TD" 2>/dev/null)
+                    if [ "$M" = "1f8b" ]; then
+                        gunzip -c "$TD" > "$EF" 2>/dev/null
+                    else
+                        cp "$TD" "$EF"
+                    fi
+                    rm -f "$TD"
+                    if [ -s "$EF" ]; then
+                        SZ=$(wc -c < "$EF")
+                        cp "$EF" /www/iptv/epg.xml
+                        SZKB=$((SZ / 1024))
+                        if [ "$((SZ / 1048576))" -gt 10 ] 2>/dev/null; then
+                            printf '{"status":"ok","message":"EPG обновлён! Размер: %s KB. Внимание: EPG >10MB","size":"%s KB","large":true}' "$SZKB" "$SZKB"
+                        else
+                            printf '{"status":"ok","message":"EPG обновлён! Размер: %s KB","size":"%s KB","large":false}' "$SZKB" "$SZKB"
+                        fi
+                    else
+                        printf '{"status":"error","message":"Ошибка распаковки EPG"}'
+                    fi
+                } || { rm -f "$TD"; printf '{"status":"error","message":"Ошибка загрузки EPG"}'; }
             else
                 printf '{"status":"error","message":"EPG URL не задан"}'
             fi ;;
@@ -270,14 +285,29 @@ if [ -n "$ACTION" ]; then
             NU=$(echo "$NU" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
             if [ -n "$NU" ]; then
                 printf 'EPG_URL="%s"\n' "$NU" > "$EXC"
-                wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EF" "$NU" 2>/dev/null && [ -s "$EF" ] && {
-                    M=$(hexdump -n 2 -e '2/1 "%02x"' "$EF" 2>/dev/null)
-                    [ "$M" = "1f8b" ] && { gunzip -f "$EF" 2>/dev/null; mv "${EF%.gz}" "$EF" 2>/dev/null; }
-                    case "$NU" in *.gz) gunzip -f "$EF" 2>/dev/null; mv "${EF%.gz}" "$EF" 2>/dev/null ;; esac
-                    SZ=$(wc -c < "$EF")
-                    cp "$EF" /www/iptv/epg.xml
-                    printf '{"status":"ok","message":"EPG загружен! Размер: %s KB"}' "$((SZ / 1024))"
-                } || printf '{"status":"error","message":"Ошибка загрузки EPG"}'
+                TD="/tmp/epg-dl.tmp"
+                wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$TD" "$NU" 2>/dev/null && [ -s "$TD" ] && {
+                    M=$(hexdump -n 2 -e '2/1 "%02x"' "$TD" 2>/dev/null)
+                    if [ "$M" = "1f8b" ]; then
+                        gunzip -c "$TD" > "$EF" 2>/dev/null
+                    else
+                        cp "$TD" "$EF"
+                    fi
+                    rm -f "$TD"
+                    if [ -s "$EF" ]; then
+                        SZ=$(wc -c < "$EF")
+                        cp "$EF" /www/iptv/epg.xml
+                        SZMB=$((SZ / 1048576))
+                        SZKB=$((SZ / 1024))
+                        if [ "$SZMB" -gt 10 ] 2>/dev/null; then
+                            printf '{"status":"ok","message":"EPG загружен! Размер: %s KB. Внимание: EPG >10MB, рекомендуется EPG_LITE","size":"%s KB","large":true}' "$SZKB" "$SZKB"
+                        else
+                            printf '{"status":"ok","message":"EPG загружен! Размер: %s KB","size":"%s KB","large":false}' "$SZKB" "$SZKB"
+                        fi
+                    else
+                        printf '{"status":"error","message":"Ошибка распаковки EPG"}'
+                    fi
+                } || { rm -f "$TD"; printf '{"status":"error","message":"Ошибка загрузки EPG"}'; }
             else
                 printf '{"status":"error","message":"Укажите URL"}'
             fi ;;
@@ -288,6 +318,49 @@ if [ -n "$ACTION" ]; then
             [ -z "$EI" ] && EI=0
             printf 'PLAYLIST_INTERVAL="%s"\nEPG_INTERVAL="%s"\n' "$PI" "$EI" > "$SC"
             printf '{"status":"ok","message":"Расписание сохранено"}' ;;
+        set_playlist_name)
+            NM=$(echo "$POST_DATA" | sed -n 's/.*name=\([^&]*\).*/\1/p')
+            NM=$(echo "$NM" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
+            if [ -n "$NM" ]; then
+                printf 'PLAYLIST_NAME="%s"\n' "$NM" >> "$EC"
+                printf '{"status":"ok","message":"Название сохранено"}'
+            else
+                printf '{"status":"error","message":"Укажите название"}'
+            fi ;;
+        get_epg)
+            if [ -f "$EF" ]; then
+                local now_ts=$(date '+%Y%m%d%H%M%S' 2>/dev/null)
+                local rows=$(awk -v now="$now_ts" '
+                BEGIN{printf "[";f=1}
+                /<programme / {
+                    s = $0; st = ""; ch = ""
+                    if (match(s, /start="[0-9]+/)) st = substr(s, RSTART + 7, RLENGTH - 7)
+                    if (match(s, /channel="[^"]+"/)) ch = substr(s, RSTART + 9, RLENGTH - 9)
+                }
+                /<title/ {
+                    t = $0
+                    if (match(t, /<title[^>]*>[^<]*<\/title>/)) {
+                        t = substr(t, RSTART, RLENGTH)
+                        gsub(/<[^>]*>/, "", t)
+                        ti = t
+                    }
+                }
+                /<\/programme>/ {
+                    if (ti != "" && ch != "" && st != "") {
+                        if(!f)printf ","
+                        f=0
+                        gsub(/"/, "\\\"", ti)
+                        gsub(/"/, "\\\"", ch)
+                        printf "{\"t\":\"%s:%s\",\"c\":\"%s\",\"p\":\"%s\"}", substr(st,9,2), substr(st,11,2), ch, ti
+                    }
+                    ti = ""
+                }
+                END{printf "]"}
+                ' "$EF" 2>/dev/null)
+                printf '{"status":"ok","rows":%s}' "$rows"
+            else
+                printf '{"status":"ok","rows":[]}'
+            fi ;;
         backup)
             BF="/tmp/iptv-backup-$(date +%Y%m%d%H%M%S).tar.gz"
             tar czf "$BF" -C /etc iptv 2>/dev/null
@@ -502,7 +575,7 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="h"><div><h1>IPTV Manager</h1><p>OpenWrt v$IPTV_MANAGER_VERSION</p></div><button class="tt" id="ttb" onclick="toggleTheme()">🌙 Тема</button></div>
 <div class="st">
 <div class="s"><div class="sv">$CH</div><div class="sl">Каналов</div></div>
-<div class="s"><div class="sv">$psz</div><div class="sl">Плейлист</div></div>
+<div class="s"><div class="sv">${pname:-$psz}</div><div class="sl">Плейлист</div></div>
 <div class="s"><div class="sv">$esz</div><div class="sl">EPG</div></div>
 <div class="s"><div class="sv">$grp_count</div><div class="sl">Групп</div></div>
 <div class="s"><div class="sv">$hd_count</div><div class="sl">HD</div></div>
@@ -535,6 +608,9 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 </div>
 <div class="pn" id="p-playlist">
 <h2>Плейлист</h2>
+<div class="fg"><label>Название плейлиста</label><input type="text" id="pl-name" placeholder="Мой плейлист" value="$pname"><div class="hint">Произвольное имя для отображения в статистике</div></div>
+<div class="bg" style="margin-top:6px"><button class="b bp bsm" onclick="setPlName()">Сохранить название</button></div>
+<hr>
 <div class="fg"><label>Ссылка на плейлист</label><input type="url" id="pl-u" placeholder="http://example.com/playlist.m3u" value="$purl"><div class="hint">Вставьте ссылку на M3U/M3U8 плейлист</div></div>
 <div class="bg"><button class="b bp" onclick="setPlUrl()">Применить</button><button class="b bs" onclick="act('refresh_playlist','')">Обновить</button></div>
 <hr>
@@ -544,14 +620,14 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="pn" id="p-epg">
 <h2>Телепрограмма (EPG)</h2>
 $epg_notice
-<div class="fg"><label>Ссылка на EPG (XMLTV)</label><input type="url" id="epg-u" placeholder="https://iptvx.one/EPG.XML" value="$eurl"><div class="hint">Поддерживаются XML и XML.gz. Распаковка автоматическая.</div></div>
-<div class="bg"><button class="b bp" onclick="setEpgUrl()">Применить</button><button class="b bs" onclick="act('refresh_epg','')">Обновить</button></div>
+<div class="fg"><label>Ссылка на EPG (XMLTV)</label><input type="url" id="epg-u" placeholder="https://iptvx.one/EPG_LITE" value="$eurl"><div class="hint">Поддерживаются XML и XML.gz. Распаковка автоматическая. EPG хранится в RAM (/tmp).</div></div>
+<div class="bg"><button class="b bp" onclick="setEpgUrl()">Применить</button><button class="b bs" onclick="act('refresh_epg','');setTimeout(loadEpgTable,1000)">Обновить</button></div>
 <hr>
-<h3>Передачи</h3>
+<h3>Передачи <button class="b bsm bo" onclick="loadEpgTable()">🔄 Обновить</button></h3>
 <div style="overflow-x:auto">
 <table class="epg-t">
 <thead><tr><th>Время</th><th>Канал</th><th>Передача</th></tr></thead>
-<tbody>$epg_rows</tbody>
+<tbody id="epg-tb"><tr><td colspan="3" class="loading">Загрузка...</td></tbody>
 </table>
 </div>
 </div>
@@ -659,6 +735,7 @@ function st(t,e){
     document.getElementById('p-'+t).classList.add('a');
     e.classList.add('a');
     if(t==='playlist')loadRaw();
+    if(t==='epg')loadEpgTable();
 }
 
 function cp(b){
@@ -676,14 +753,15 @@ function toast(m,t){
     setTimeout(function(){d.remove()},4000);
 }
 
-function act(a,p){
+function act(a,p,cb){
     var x=new XMLHttpRequest();
     x.open('POST',API,true);
     x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
     x.onload=function(){
         try{
             var r=JSON.parse(x.responseText);
-            if(r.status==='ok'){toast(r.message,'ok');setTimeout(function(){location.reload()},1500)}
+            if(cb){cb(r)}
+            else if(r.status==='ok'){toast(r.message,'ok');setTimeout(function(){location.reload()},1500)}
             else toast(r.message,'err');
         }catch(e){toast('Ошибка','err')}
     };
@@ -762,7 +840,46 @@ function setPlUrl(){
 function setEpgUrl(){
     var u=document.getElementById('epg-u').value;
     if(!u){toast('Введите ссылку','err');return}
-    act('set_epg_url','url='+encodeURIComponent(u));
+    act('set_epg_url','url='+encodeURIComponent(u),function(r){
+        if(r.status==='ok'){
+            toast(r.message,r.large?'err':'ok');
+            setTimeout(loadEpgTable,1000);
+            setTimeout(loadEpgMap,1000);
+        }
+    });
+}
+
+function setPlName(){
+    var n=document.getElementById('pl-name').value;
+    if(!n){toast('Введите название','err');return}
+    act('set_playlist_name','name='+encodeURIComponent(n));
+}
+
+function loadEpgTable(){
+    var x=new XMLHttpRequest();
+    x.open('GET',API+'?action=get_epg',true);
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            var tb=document.getElementById('epg-tb');
+            if(r.status==='ok'&&r.rows&&r.rows.length){
+                var h='';
+                for(var i=0;i<r.rows.length;i++){
+                    var row=r.rows[i];
+                    h+='<tr><td>'+escHtml(row.t)+'</td><td>'+escHtml(row.c)+'</td><td>'+escHtml(row.p)+'</td></tr>';
+                }
+                tb.innerHTML=h;
+            }else{
+                tb.innerHTML='<tr><td colspan="3" class="loading">Нет данных</td></tr>';
+            }
+        }catch(e){
+            document.getElementById('epg-tb').innerHTML='<tr><td colspan="3" class="loading">Ошибка загрузки</td></tr>';
+        }
+    };
+    x.onerror=function(){
+        document.getElementById('epg-tb').innerHTML='<tr><td colspan="3" class="loading">Ошибка загрузки</td></tr>';
+    };
+    x.send();
 }
 
 function saveSched(){
