@@ -393,6 +393,23 @@ document.addEventListener('keydown',function(e){
 });
 
 urlIn.addEventListener('keydown',function(e){if(e.key==='Enter')handleUrl()});
+
+function toggleTheme(){
+    var d=document.documentElement,c=d.getAttribute('data-theme')||'light';
+    var n=c==='light'?'dark':c==='dark'?'openwrt':'light';
+    d.setAttribute('data-theme',n);
+    var b=document.getElementById('ttb');
+    if(b)b.textContent=n==='light'?'🌙':n==='dark'?'🟣':'☀️';
+    try{localStorage.setItem('iptv-theme',n)}catch(e){}
+}
+(function(){
+    try{
+        var t=localStorage.getItem('iptv-theme');
+        if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');document.getElementById('ttb').textContent='🟣'}
+        else if(t==='openwrt'){document.documentElement.setAttribute('data-theme','openwrt');document.getElementById('ttb').textContent='☀️'}
+    }catch(e){}
+    if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt');var b=document.getElementById('ttb');if(b)b.textContent='☀️'}
+})();
 </script>
 </body>
 </html>

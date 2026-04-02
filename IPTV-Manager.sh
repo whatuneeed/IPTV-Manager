@@ -16,6 +16,7 @@ PLAYLIST_FILE="$IPTV_DIR/playlist.m3u"
 CONFIG_FILE="$IPTV_DIR/iptv.conf"
 PROVIDER_CONFIG="$IPTV_DIR/provider.conf"
 EPG_GZ="/tmp/iptv-epg.xml.gz"
+EPG_TD="/tmp/iptv-epg-dl.xml"
 EPG_CONFIG="$IPTV_DIR/epg.conf"
 SCHEDULE_FILE="$IPTV_DIR/schedule.conf"
 FAVORITES_FILE="$IPTV_DIR/favorites.json"
@@ -47,7 +48,25 @@ _auto_update() {
 case "$0" in /etc/iptv/*|/tmp/IPTV*) _auto_update ;; esac
 
 # Clean old/invalid CGI before generating
-rm -rf /www/iptv
+rm -f /www/iptv/admin.cgi /www/iptv/channels.json /www/iptv/playlist.m3u /www/iptv/epg.xml /www/iptv/epg.cgi
+rm -f /www/iptv/player.html /www/iptv/epg.json
+
+# Download EPG from URL → /tmp/iptv-epg.xml.gz
+# Usage: _dl_epg "https://..."  (returns 0 on success, sets $EPG_GZ_SZ to human-readable size)
+_dl_epg() {
+    local _url="$1"
+    if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_TD" "$_url" 2>/dev/null && [ -s "$EPG_TD" ]; then
+        local _m=$(hexdump -n 2 -e '2/1 "%02x"' "$EPG_TD" 2>/dev/null)
+        if [ "$_m" = "1f8b" ]; then
+            cp "$EPG_TD" "$EPG_GZ"
+        else
+            gzip -c "$EPG_TD" > "$EPG_GZ" 2>/dev/null
+        fi
+        rm -f "$EPG_TD"
+        return 0
+    fi
+    return 1
+}
 
 echo_color() { echo -e "${MAGENTA}$1${NC}"; }
 echo_success() { echo -e "${GREEN}$1${NC}"; }
@@ -98,8 +117,10 @@ generate_cgi() {
 
     local groups=""
     [ -f "$PLAYLIST_FILE" ] && groups=$(grep -o 'group-title="[^"]*"' "$PLAYLIST_FILE" | sed 's/group-title="//;s/"//' | sort -u)
-    local grp_count=$(echo "$groups" | grep -c . 2>/dev/null || echo 0)
-    local hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PLAYLIST_FILE" 2>/dev/null || echo 0)
+    local grp_count=$(echo "$groups" | grep -c . 2>/dev/null)
+    [ -z "$grp_count" ] && grp_count=0
+    local hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PLAYLIST_FILE" 2>/dev/null)
+    [ -z "$hd_count" ] && hd_count=0
     local sd_count=$((${ch:-0} - ${hd_count:-0}))
 
     # Генерация JSON каналов через awk
@@ -351,8 +372,8 @@ if [ -n "$ACTION" ]; then
             fi ;;
         get_epg)
             if [ -f "$EPG_GZ" ]; then
-                local now_ts=$(date '+%Y%m%d%H%M%S' 2>/dev/null)
-                local rows=$(gunzip -c "$EPG_GZ" 2>/dev/null | awk -v now="$now_ts" '
+                now_ts=$(date '+%Y%m%d%H%M%S' 2>/dev/null)
+                rows=$(gunzip -c "$EPG_GZ" 2>/dev/null | awk -v now="$now_ts" '
                 BEGIN{printf "[";f=1;c=0}
                 /<programme / {
                     s = $0; st = ""; ch = ""
@@ -471,7 +492,8 @@ if [ -n "$ACTION" ]; then
 fi
 
 hdr
-CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null || echo 0)
+CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null)
+[ -z "$CH" ] && CH=0
 PSZ="---"
 ESZ="---"
 if [ -f "$PL" ]; then PSZ=$(cat "$PL" | wc -c); PSZ="$((PSZ/1024)) KB"; fi
@@ -505,8 +527,10 @@ EPGROWS=""
 
 groups=""
 [ -f "$PL" ] && groups=$(grep -o 'group-title="[^"]*"' "$PL" | sed 's/group-title="//;s/"//' | sort -u)
-grp_count=$(echo "$groups" | grep -c . 2>/dev/null || echo 0)
-hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null || echo 0)
+grp_count=$(echo "$groups" | grep -c . 2>/dev/null)
+[ -z "$grp_count" ] && grp_count=0
+hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null)
+[ -z "$hd_count" ] && hd_count=0
 sd_count=$((${CH:-0} - ${hd_count:-0}))
 
 group_opts=""
@@ -1680,8 +1704,8 @@ setup_epg() {
         case "$choice" in
             1)
                 echo_info "Скачиваем $builtin ..."
-                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$builtin" 2>/dev/null && [ -s "$EPG_FILE" ]; then
-                    local sz=$(file_size "$EPG_FILE")
+                if _dl_epg "$builtin"; then
+                    local sz=$(file_size "$EPG_GZ")
                     echo_success "Загружен! Размер: $sz"
                     printf 'EPG_URL="%s"\n' "$builtin" > "$EPG_CONFIG"
                     local now=$(get_ts)
@@ -1698,8 +1722,8 @@ setup_epg() {
                 read EPG_URL </dev/tty
                 [ -z "$EPG_URL" ] && { echo_info "Отмена"; return 1; }
                 echo_info "Скачиваем..."
-                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
-                    local sz=$(file_size "$EPG_FILE")
+                if _dl_epg "$EPG_URL"; then
+                    local sz=$(file_size "$EPG_GZ")
                     echo_success "Загружен! Размер: $sz"
                     printf 'EPG_URL="%s"\n' "$EPG_URL" > "$EPG_CONFIG"
                     local now=$(get_ts)
@@ -1718,8 +1742,8 @@ setup_epg() {
         read EPG_URL </dev/tty
         [ -z "$EPG_URL" ] && { echo_info "Отмена"; return 1; }
         echo_info "Скачиваем..."
-        if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
-            local sz=$(file_size "$EPG_FILE")
+        if _dl_epg "$EPG_URL"; then
+            local sz=$(file_size "$EPG_GZ")
             echo_success "Загружен! Размер: $sz"
             printf 'EPG_URL="%s"\n' "$EPG_URL" > "$EPG_CONFIG"
             local now=$(get_ts)
@@ -1737,8 +1761,8 @@ setup_epg() {
 do_update_epg() {
     load_epg
     [ -z "$EPG_URL" ] && { echo_error "EPG не настроен!"; return 1; }
-    if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
-        local sz=$(file_size "$EPG_FILE")
+    if _dl_epg "$EPG_URL"; then
+        local sz=$(file_size "$EPG_GZ")
         local now=$(get_ts)
         load_sched
         save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$now"
@@ -1749,7 +1773,7 @@ do_update_epg() {
     fi
 }
 
-remove_epg() { rm -f "$EPG_FILE" "$EPG_CONFIG"; echo_success "EPG удалён"; }
+remove_epg() { rm -f "$EPG_GZ" "$EPG_CONFIG"; echo_success "EPG удалён"; }
 
 setup_schedule() {
     load_sched
@@ -1922,8 +1946,8 @@ first_setup() {
         case "$epg_choice" in
             1)
                 echo_info "Скачиваем..."
-                if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$builtin" 2>/dev/null && [ -s "$EPG_FILE" ]; then
-                    echo_success "EPG загружен! Размер: $(file_size "$EPG_FILE")"
+                if _dl_epg "$builtin"; then
+                    echo_success "EPG загружен! Размер: $(file_size "$EPG_GZ")"
                     printf 'EPG_URL="%s"\n' "$builtin" > "$EPG_CONFIG"
                 else
                     echo_info "Не удалось скачать"
@@ -1933,8 +1957,8 @@ first_setup() {
                 read EPG_URL </dev/tty
                 if [ -n "$EPG_URL" ]; then
                     echo_info "Скачиваем..."
-                    if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
-                        echo_success "EPG загружен! Размер: $(file_size "$EPG_FILE")"
+                    if _dl_epg "$EPG_URL"; then
+                        echo_success "EPG загружен! Размер: $(file_size "$EPG_GZ")"
                         printf 'EPG_URL="%s"\n' "$EPG_URL" > "$EPG_CONFIG"
                     else
                         echo_info "Не удалось скачать"
@@ -1953,8 +1977,8 @@ first_setup() {
                 read EPG_URL </dev/tty
                 if [ -n "$EPG_URL" ]; then
                     echo_info "Скачиваем..."
-                    if wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$EPG_FILE" "$EPG_URL" 2>/dev/null && [ -s "$EPG_FILE" ]; then
-                        echo_success "EPG загружен! Размер: $(file_size "$EPG_FILE")"
+                    if _dl_epg "$EPG_URL"; then
+                        echo_success "EPG загружен! Размер: $(file_size "$EPG_GZ")"
                         printf 'EPG_URL="%s"\n' "$EPG_URL" > "$EPG_CONFIG"
                     else
                         echo_info "Не удалось скачать"
