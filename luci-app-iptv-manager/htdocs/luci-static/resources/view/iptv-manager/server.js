@@ -43,7 +43,7 @@ return view.extend({
             '    procd_close_instance\n' +
             '}\n' +
             'stop() { kill $(pgrep -f "uhttpd.*8082" 2>/dev/null) 2>/dev/null; rm -f /var/run/iptv-httpd.pid; }\n';
-        return fs.write('/etc/init.d/iptv-manager', script, 0755);
+        return fs.write('/etc/init.d/iptv-manager', script, 493);
     },
 
     render: function(data) {
