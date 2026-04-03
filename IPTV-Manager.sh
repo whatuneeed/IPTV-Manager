@@ -809,42 +809,31 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"ok","output":"stopped"}'
             fi ;;
         auto_update_keep)
+            # Always download fresh copy first
+            printf '{"status":"ok","message":"Скачиваю обновление..."}'
             TMPN="/tmp/IPTV-Manager-new.sh"
-            if [ -s "$TMPN" ]; then
-                printf '{"status":"ok","message":"Обновлено с сохранением настроек. Перезагрузка..."}'
-                # Kill and replace in background
-                (
-                    sleep 2
-                    kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
-                    sleep 1
-                    cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
-                    chmod +x "$IPTV_DIR/IPTV-Manager.sh"
-                    rm -f "$TMPN"
-                    # Start new script which generates everything
-                    "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
-                ) &
-            else
-                printf '{"status":"error","message":"Сначала скачайте обновление через wget"}'
+            if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
+                kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+                sleep 1
+                rm -f "$IPTV_DIR"/*.conf "$IPTV_DIR"/*.json "$IPTV_DIR"/*.m3u
+                cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
+                chmod +x "$IPTV_DIR/IPTV-Manager.sh"
+                rm -f "$TMPN"
+                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
             fi
             ;;
-        auto_update_clean)
-            TMPN="/tmp/IPTV-Manager-new.sh"
-            if [ -s "$TMPN" ]; then
-                printf '{"status":"ok","message":"Обновлено начисто. Перезагрузка..."}'
-                (
-                    sleep 2
-                    kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
-                    sleep 1
-                    rm -f "$IPTV_DIR"/*.conf "$IPTV_DIR"/*.json "$IPTV_DIR"/*.m3u
-                    rm -f /tmp/iptv-started
-                    cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
-                    chmod +x "$IPTV_DIR/IPTV-Manager.sh"
-                    rm -f "$TMPN"
-                    "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
-                ) &
-            else
-                printf '{"status":"error","message":"Сначала скачайте обновление через wget"}'
-            fi
+        factory_reset)
+            printf '{"status":"ok","message":"Сброс к заводским! Перезапустите скрипт в терминале."}'
+            (
+                sleep 2
+                kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+                sleep 1
+                rm -f "$IPTV_DIR"/*.conf "$IPTV_DIR"/*.json "$IPTV_DIR"/*.m3u
+                rm -f /tmp/iptv-started
+                # Download freshest script
+                wget -q --timeout=30 --no-check-certificate -O "$IPTV_DIR/IPTV-Manager.sh" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null
+                chmod +x "$IPTV_DIR/IPTV-Manager.sh" 2>/dev/null
+            ) &
             ;;
     esac
     exit 0
