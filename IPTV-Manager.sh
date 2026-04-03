@@ -3,10 +3,10 @@
 SELF="$0"
 [ -f "$SELF" ] && sed -i 's/\r$//' "$SELF" 2>/dev/null
 # ==========================================
-# IPTV Manager для OpenWrt v3.19
+# IPTV Manager для OpenWrt v3.20
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.19"
+IPTV_MANAGER_VERSION="3.20"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -2966,9 +2966,7 @@ express_setup() {
     echo "   Плейлист: http://$LAN_IP:$IPTV_PORT/playlist.m3u"
     echo "   EPG: http://$LAN_IP:$IPTV_PORT/epg.xml"
     echo ""
-    echo -e "${YELLOW}Открыть админку в браузере? (y/N): ${NC}"
-    read ans </dev/tty
-    case "$ans" in y|Y|yes|Yes) echo_info "Нажмите Ctrl+Click или скопируйте ссылку" ;; esac
+    echo -e "${YELLOW}Откройте админку: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi${NC}"
 }
 
 express_factory_reset() {
@@ -3124,7 +3122,7 @@ print_header() {
     load_sched
     [ -z "$PLAYLIST_INTERVAL" ] && PLAYLIST_INTERVAL="0"
     [ -z "$EPG_INTERVAL" ] && EPG_INTERVAL="0"
-    [ -z "$PLAYLIST_LAST_UPDATE" ] && PLAYLIST_LAST_UPDATE="—"; [ -z "$EPG_LAST_UPDATE" ] && EPG_LAST_UPDATE="—"
+    [ -z "$PLAYLIST_LAST_UPDATE" ] && PLAYLIST_LAST_UPDATE="—"
     local _c=$(get_ch)
     local ch="${_c:-0}"
     local srv_status="❌ Остановлен"
@@ -3137,7 +3135,9 @@ print_header() {
                 local _now=$(date +%s)
                 local _diff=$(((_now+0) - (_sn+0)))
                 if [ "$_diff" -gt 0 ] 2>/dev/null; then
-                    local _id=$((_diff / 86400)); local _ih=$(((_diff % 86400) / 3600)); local _im=$(((_diff % 3600) / 60))
+                    local _id=$((_diff / 86400))
+                    local _ih=$(((_diff % 86400) / 3600))
+                    local _im=$(((_diff % 3600) / 60))
                     srv_uptime=""
                     [ "$_id" -gt 0 ] && srv_uptime="${_id}д "
                     srv_uptime="${srv_uptime}${_ih}ч ${_im}м"
@@ -3155,15 +3155,45 @@ print_header() {
     [ -d /www/iptv ] && display_disk=$(du -sh /www/iptv 2>/dev/null | cut -f1)
     [ -z "$display_disk" ] && display_disk="0K"
 
+    local hd_count=0
+    [ -f "$PLAYLIST_FILE" ] && hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PLAYLIST_FILE" 2>/dev/null || true)
+    [ -z "$hd_count" ] && hd_count=0
+    local sd_count=$((ch - hd_count))
+    [ "$sd_count" -lt 0 ] 2>/dev/null && sd_count=0
+    local groups=""
+    [ -f "$PLAYLIST_FILE" ] && groups=$(grep -o 'group-title="[^"]*"' "$PLAYLIST_FILE" 2>/dev/null | sed 's/group-title="//;s/"//' | sort -u | grep . || true)
+    local grp_count=0
+    [ -n "$groups" ] && grp_count=$(echo "$groups" | wc -l | tr -d ' ')
+
     echo ""
-    echo -e "${MAGENTA}╔══════════════════════════════════════════════╗${NC}"
-    echo -e "${MAGENTA}║${NC}     IPTV Manager v${CYAN}$IPTV_MANAGER_VERSION${MAGENTA}                     ║${NC}"
-    echo -e "${MAGENTA}╠══════════════════════════════════════════════╣${NC}"
-    echo -e "${MAGENTA}║${NC} 🌐 ${CYAN}$LAN_IP${MAGENTA}:${CYAN}$IPTV_PORT${NC}        📺 ${GREEN}$ch${NC} каналов         ║${NC}"
-    printf "${MAGENTA}║${NC} 📡 EPG: ${CYAN}%-2s${NC}   💾 ${CYAN}%-6s${NC}  🗄️ ${CYAN}%-7s${NC} ║\n" "$display_epg" "$display_ram" "$display_disk" "║${NC}"
-    printf "${MAGENTA}║${NC} 🖥️  Сервер: %-10s ⏱️ ${CYAN}%-10s${NC}       ║\n" "$srv_status" "$srv_uptime" "${NC}"
-    echo -e "${MAGENTA}╚══════════════════════════════════════════════╝${NC}"
-    echo ""
+    echo -e "══════════════════════════════════════════"
+    echo -e "     IPTV Manager v${CYAN}$IPTV_MANAGER_VERSION${NC}                   "
+    echo -e "══════════════════════════════════════════"
+
+    # Check if NOT configured
+    load_config
+    local has_pl=false
+    [ -n "$PLAYLIST_TYPE" ] && [ -n "$PLAYLIST_URL" ] && has_pl=true
+    local srv_running=false
+    [ -f "$HTTPD_PID" ] && kill -0 "$(cat "$HTTPD_PID" 2>/dev/null)" 2>/dev/null && srv_running=true
+
+    if [ "$has_pl" = "false" ] && [ "$srv_running" = "false" ]; then
+        # NOT configured mode
+        local srv_short="Остановлен"
+        echo -e "🌐 ${CYAN}$LAN_IP${NC}:${CYAN}$IPTV_PORT${NC}   📺 ${GREEN}${ch}${NC} каналов"
+        echo -e "📡 EPG: ${CYAN}${display_epg}${NC}          🖥 Сервер: $srv_short"
+        echo -e "══════════════════════════════════════════"
+        echo -e " ${YELLOW}💡${NC} IPTV Manager не настроен             "
+        echo -e " ${YELLOW}Нажмите 1${NC} для быстрой настройки         "
+        echo -e "══════════════════════════════════════════"
+    else
+        # Configured mode
+        echo -e "🌐 ${CYAN}$LAN_IP${NC}:${CYAN}$IPTV_PORT${NC}   "
+        echo -e "📺 ${GREEN}${ch}${NC} каналов 🎬 HD:${CYAN}${hd_count}${NC}  SD:${CYAN}${sd_count}${NC} 📂 ${CYAN}${grp_count}${NC} групп"
+        echo -e "📡 EPG: ${CYAN}${display_epg}${NC}  💾 ${CYAN}${display_ram}${NC}  🗄 Диск: ${CYAN}${display_disk}${NC}"
+        echo -e "🖥 Сервер: ${GREEN}${srv_status}${NC}  ⏱ ${CYAN}${srv_uptime}${NC}"
+        echo -e "══════════════════════════════════════════"
+    fi
 }
 
 show_menu() {
@@ -3171,27 +3201,28 @@ show_menu() {
     load_config
     local has_pl=false
     [ -n "$PLAYLIST_TYPE" ] && [ -n "$PLAYLIST_URL" ] && has_pl=true
-    if [ "$has_pl" = "false" ] && [ ! -f "$HTTPD_PID" ]; then
-        echo -e "${MAGENTA}╠══════════════════════════════════════════╣${NC}"
-        echo -e "${MAGENTA}║${NC}  💡 ${CYAN}IPTV Manager не настроен                 ${MAGENTA}║${NC}"
-        echo -e "${MAGENTA}║${NC}  Нажмите ${GREEN}1${NC} для быстрой настройки        ${MAGENTA}║${NC}"
-        echo -e "${MAGENTA}╚══════════════════════════════════════════╝${NC}"
+    local srv_running=false
+    [ -f "$HTTPD_PID" ] && kill -0 "$(cat "$HTTPD_PID" 2>/dev/null)" 2>/dev/null && srv_running=true
+    if [ "$has_pl" = "false" ] && [ "$srv_running" = "false" ]; then
         echo ""
         echo -e "${YELLOW}── 🚀 Экспресс-настройка ──────────────${NC}"
-        echo -e "${CYAN} 1) ${GREEN}Запустить настройку${NC}"
+        echo "  Автоматическая установка за 30 секунд"
         echo ""
-        echo -e "${CYAN} q) Выход${NC}"
+        echo -e "${CYAN} 1) Запустить настройку${NC}"
+        echo ""
+        echo -e "${CYAN} 0) Выход${NC}"
         echo ""
         echo -ne "${YELLOW}> ${NC}"
         read c </dev/tty
         case "$c" in
-            1) express_setup ;; q|Q) exit 0 ;; *) echo_info "Выход"; exit 0 ;;
+            1) express_setup ;; 0) exit 0 ;; *) echo_info "Выход"; exit 0 ;;
         esac
         PAUSE
         return
     fi
-
-    echo -e "${YELLOW}── Главное меню ────────────────────────${NC}"
+    
+    echo ""
+    echo -e "${YELLOW}── 💡 Главное меню ────────────────────────${NC}"
     echo -e "${CYAN} 1) ${GREEN}📡  Плейлист${NC}"
     echo -e "${CYAN} 2) ${GREEN}📺  Телепрограмма${NC}"
     echo -e "${CYAN} 3) ${GREEN}🔧  Сервер${NC}"
@@ -3200,16 +3231,14 @@ show_menu() {
     echo -e "${CYAN} 6) ${GREEN}💾  Бэкап${NC}"
     echo -e "${CYAN} 7) ${GREEN}🔄  Обновление${NC}"
     echo ""
-    echo -e "${CYAN} 0) Удалить IPTV Manager${NC}"
-    echo -e "${CYAN} q) Выход${NC}"
+    echo -e "${CYAN} 0) Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"
     read c </dev/tty
     case "$c" in
         1) menu_playlist ;; 2) menu_epg ;; 3) menu_server ;;
         4) menu_schedule ;; 5) menu_security ;; 6) menu_backup ;;
-        7) menu_update ;; 0) show_uninstall ;; q|Q) exit 0 ;;
-        *) echo_info "Отмена"; return ;;
+        7) menu_update ;; 0) exit 0 ;; *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
