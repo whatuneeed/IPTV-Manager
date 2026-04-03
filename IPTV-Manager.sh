@@ -837,17 +837,21 @@ hd_count=0
 [ -f "$PL" ] && hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null || true)
 [ -z "$hd_count" ] && hd_count=0
 sd_count=$((${CH:-0} - ${hd_count:-0}))
-# System info
-_upt=$(cat /proc/uptime 2>/dev/null | cut -d. -f1)
-_upt_d=$(((_upt+0) / 86400)); _upt_h=$(((_upt+0) % 86400 / 3600)); _upt_m=$(((_upt+0) % 3600 / 60))
-_uptxt=""; [ "$_upt_d" -gt 0 ] && _uptxt="${_upt_d}д "; _uptxt="${_uptxt}${_upt_h}ч ${_upt_m}м"
-_mem_t=$(awk '/MemTotal/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
-_mem_f=$(awk '/MemAvailable/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
-[ -z "$_mem_f" ] && _mem_f=$(awk '/MemFree/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
-_mem_u=$(((_mem_t+0) - (_mem_f+0)))
-_disk_t=$(df / 2>/dev/null | awk 'NR==2{print $2}')
-_disk_u=$(df / 2>/dev/null | awk 'NR==2{print $3}')
-_disk_p=$(df / 2>/dev/null | awk 'NR==2{print $5}')
+# System info — IPTV Manager resource usage only
+_iptv_ram=0
+[ -f "$PL" ] && _iptv_ram=$((_iptv_ram + $(wc -c < "$PL" 2>/dev/null || echo 0)))
+[ -f "$EPG_GZ" ] && _iptv_ram=$((_iptv_ram + $(wc -c < "$EPG_GZ" 2>/dev/null || echo 0)))
+[ -f /www/iptv/channels.json ] && _iptv_ram=$((_iptv_ram + $(wc -c < /www/iptv/channels.json 2>/dev/null || echo 0)))
+for _f in "$CONFIG_FILE" "$PROVIDER_CONFIG" "$EPG_CONFIG" "$SCHEDULE_FILE" "$FAVORITES_FILE" "$SECURITY_FILE"; do [ -f "$_f" ] && _iptv_ram=$((_iptv_ram + $(wc -c < "$_f" 2>/dev/null || echo 0))); done
+_iptv_kB=$((_iptv_ram / 1024))
+[ "$_iptv_kB" -lt 1024 ] && _iptv_rt="${_iptv_kB}KB" || _iptv_rt="$((_iptv_kB / 1024))MB"
+# Disk usage — IPTV Manager files only
+_iptv_disk=0
+[ -d /etc/iptv ] && _iptv_disk=$((_iptv_disk + $(du -sb /etc/iptv 2>/dev/null | cut -f1 || echo 0)))
+[ -d /www/iptv ] && _iptv_disk=$((_iptv_disk + $(du -sb /www/iptv 2>/dev/null | cut -f1 || echo 0)))
+[ -f "$EPG_GZ" ] && _iptv_disk=$((_iptv_disk + $(du -sb "$EPG_GZ" 2>/dev/null | cut -f1 || echo 0)))
+_iptv_dkB=$((_iptv_disk / 1024))
+[ "$_iptv_dkB" -lt 1024 ] && _iptv_dt="${_iptv_dkB}KB" || _iptv_dt="$((_iptv_dkB / 1024))MB"
 pname="${PLAYLIST_NAME:-$PSZ}"
 psz="$PSZ"
 esz="$ESZ"
@@ -955,11 +959,12 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="s"><div class="sv">$hd_count</div><div class="sl">HD</div></div>
 <div class="s"><div class="sv">$sd_count</div><div class="sl">SD</div></div>
 <div class="s"><div class="sv">$_uptxt</div><div class="sl">Аптайм</div></div>
-<div class="s"><div class="sv">${_mem_u}MB</div><div class="sl">RAM</div></div>
-<div class="s"><div class="sv">$_disk_p</div><div class="sl">Диск</div></div>
+<div class="s"><div class="sv">$_iptv_rt</div><div class="sl">RAM*</div></div>
+<div class="s"><div class="sv">$_iptv_dt</div><div class="sl">Диск*</div></div>
 </div>
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/playlist.m3u</code><button onclick="cp(this)">Копировать</button></div>
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/epg.xml</code><button onclick="cp(this)">Копировать</button></div>
+<div class="ub" style="font-size:10px;color:var(--text3)">* Только файлы IPTV Manager (конфиги, плейлист, EPG)</div>
 <div class="tb">
 <button class="t a" onclick="st('status',this)">Каналы</button>
 <button class="t" onclick="st('playlist',this)">Плейлист</button>
