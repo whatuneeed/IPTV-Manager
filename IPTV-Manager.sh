@@ -466,8 +466,11 @@ if [ -n "$ACTION" ]; then
                         printf '{"status":"error","message":"URL плейлиста недоступен"}'
                     else
                         wget $(wget_opt) -O "$PL" "$PLAYLIST_URL" 2>/dev/null && [ -s "$PL" ] && {
-                            CH=$(grep -c "^#EXTINF" "$PL")
+                            CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null)
+                            [ -z "$CH" ] && CH=0
                             cp "$PL" /www/iptv/playlist.m3u
+                            # Regenerate channels.json
+                            awk 'BEGIN{printf "[";f=1;i=0}/#EXTINF:/{nm="";g="";l="";t="";ii=index($0,",");if(ii>0){nm=substr($0,ii+1);sub(/^[ \t]+/,"",nm)};if(nm=="")nm="Неизвестный";p=index($0,"group-title=\"");if(p>0){s=substr($0,p+13);e=index(s,"\"");g=substr(s,1,e-1)};if(g=="")g="Общее";p=index($0,"tvg-logo=\"");if(p>0){s=substr($0,p+10);e=index(s,"\"");l=substr(s,1,e-1)};p=index($0,"tvg-id=\"");if(p>0){s=substr($0,p+8);e=index(s,"\"");t=substr(s,1,e-1)};next}/^http/{if(!f)printf ",";f=0;gsub(/"/,"\\\"",$0);gsub(/"/,"\\\"",nm);gsub(/"/,"\\\"",g);gsub(/"/,"\\\"",l);gsub(/"/,"\\\"",t);printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\",\"idx\":%d}",nm,g,l,t,$0,i;i++}END{printf "]"}' "$PL" > /www/iptv/channels.json 2>/dev/null
                             printf '{"status":"ok","message":"Плейлист обновлён! Каналов: %s"}' "$CH"
                         } || printf '{"status":"error","message":"Ошибка загрузки"}'
                     fi ;;
@@ -518,11 +521,17 @@ if [ -n "$ACTION" ]; then
             NU=$(echo "$NU" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
             if [ -n "$NU" ]; then
                 printf 'PLAYLIST_TYPE="url"\nPLAYLIST_URL="%s"\nPLAYLIST_SOURCE=""\n' "$NU" > "$EC"
-                wget $(wget_opt) -O "$PL" "$NU" 2>/dev/null && [ -s "$PL" ] && {
-                    CH=$(grep -c "^#EXTINF" "$PL")
+                # Download playlist
+                if wget $(wget_opt) -O "$PL" "$NU" 2>/dev/null && [ -s "$PL" ]; then
+                    CH=$(grep -c "^#EXTINF" "$PL" 2>/dev/null)
+                    [ -z "$CH" ] && CH=0
                     cp "$PL" /www/iptv/playlist.m3u
+                    # Regenerate channels.json
+                    awk 'BEGIN{printf "[";f=1;i=0}/#EXTINF:/{nm="";g="";l="";t="";ii=index($0,",");if(ii>0){nm=substr($0,ii+1);sub(/^[ \t]+/,"",nm)};if(nm=="")nm="Неизвестный";p=index($0,"group-title=\"");if(p>0){s=substr($0,p+13);e=index(s,"\"");g=substr(s,1,e-1)};if(g=="")g="Общее";p=index($0,"tvg-logo=\"");if(p>0){s=substr($0,p+10);e=index(s,"\"");l=substr(s,1,e-1)};p=index($0,"tvg-id=\"");if(p>0){s=substr($0,p+8);e=index(s,"\"");t=substr(s,1,e-1)};next}/^http/{if(!f)printf ",";f=0;gsub(/"/,"\\\"",$0);gsub(/"/,"\\\"",nm);gsub(/"/,"\\\"",g);gsub(/"/,"\\\"",l);gsub(/"/,"\\\"",t);printf "{\"n\":\"%s\",\"g\":\"%s\",\"l\":\"%s\",\"i\":\"%s\",\"u\":\"%s\",\"idx\":%d}",nm,g,l,t,$0,i;i++}END{printf "]"}' "$PL" > /www/iptv/channels.json 2>/dev/null
                     printf '{"status":"ok","message":"Плейлист загружен! Каналов: %s"}' "$CH"
-                } || printf '{"status":"error","message":"Ошибка загрузки"}'
+                else
+                    printf '{"status":"error","message":"Ошибка загрузки плейлиста"}'
+                fi
             else
                 printf '{"status":"error","message":"Укажите URL"}'
             fi ;;
