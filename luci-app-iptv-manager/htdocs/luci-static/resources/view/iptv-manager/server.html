@@ -3,137 +3,106 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>IPTV Manager — Сервер</title>
+<title>IPTV Manager вЂ” РЎРµСЂРІРµСЂ</title>
 <style>
-:root{--bg:#f0f2f5;--card:#fff;--text:#1a1a2e;--text2:#666;--text3:#888;--border:#e0e0e0;--input-bg:#fafafa;--primary:#1a73e8;--success:#1e8e3e;--danger:#d93025;--shadow:0 1px 3px rgba(0,0,0,.06)}
-[data-theme="dark"]{--bg:#0a0e1a;--card:#1e293b;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--border:#334155;--input-bg:#0f172a;--primary:#3b82f6;--success:#22c55e;--danger:#ef4444;--shadow:0 1px 3px rgba(0,0,0,.2)}
-[data-theme="openwrt"]{--bg:#1a1b26;--card:#24283b;--text:#c0caf5;--text2:#9aa5ce;--text3:#565f89;--border:#3b4261;--input-bg:#1e2030;--primary:#7aa2f7;--success:#9ece6a;--danger:#f7768e;--shadow:0 1px 3px rgba(0,0,0,.2)}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:12px;transition:background .2s}
-.c{max-width:700px;margin:0 auto}
-.card{background:var(--card);border-radius:8px;padding:16px;border:1px solid var(--border);box-shadow:var(--shadow);margin-bottom:12px}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg,#f0f2f5);color:var(--text,#1a1a2e);padding:10px}
+[data-theme="openwrt"]{--bg:#1a1b26;--text:#c0caf5;--card:#24283b;--border:#3b4261;--primary:#7aa2f7;--success:#9ece6a;--danger:#f7768e}
+[data-theme="dark"]{--bg:#0a0e1a;--text:#e2e8f0;--card:#1e293b;--border:#334155;--primary:#3b82f6;--success:#22c55e;--danger:#ef4444}
+[data-theme="light"],body{--bg:#f0f2f5;--text:#1a1a2e;--card:#fff;--border:#e0e0e0;--primary:#1a73e8;--success:#1e8e3e;--danger:#d93025}
+.card{background:var(--card,#fff);border-radius:8px;padding:16px;border:1px solid var(--border,#e0e0e0);box-shadow:0 1px 3px rgba(0,0,0,.06)}
 h2{font-size:18px;margin-bottom:4px}
-.desc{color:var(--text3);font-size:12px;margin-bottom:16px}
-.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.desc{color:var(--text2,#666);font-size:12px;margin-bottom:16px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .btn{padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer}
-.btn-s{background:var(--primary);color:#fff}.btn-s:hover{opacity:.85}
-.btn-d{background:var(--danger);color:#fff}.btn-d:hover{opacity:.85}
+.btn-s{background:var(--primary,#1a73e8);color:#fff}.btn-s:hover{opacity:.85}
+.btn-d{background:var(--danger,#d93025);color:#fff}.btn-d:hover{opacity:.85}
 .btn:disabled{opacity:.5;cursor:default}
-.status{font-size:14px;font-weight:600;color:var(--text3)}
-.status.on{color:var(--success)}
-.status.off{color:var(--text3)}
-.off{color:var(--text3)}
-.info{font-size:11px;color:var(--text3);margin-top:4px;word-break:break-all}
+.status{font-size:14px;font-weight:600}
+.on{color:var(--success,#1e8e3e)}
+.off{color:var(--text3,#888)}
 </style>
 </head>
 <body>
-<div class="c">
 <div class="card">
-<h2>Сервер</h2>
-<div class="desc">Управление IPTV сервером</div>
+<h2>РЎРµСЂРІРµСЂ</h2>
+<div class="desc">РЈРїСЂР°РІР»РµРЅРёРµ IPTV СЃРµСЂРІРµСЂРѕРј</div>
 <div class="row">
-<button class="btn btn-s" id="startBtn">Запустить</button>
-<button class="btn btn-d" id="stopBtn">Остановить</button>
+<button class="btn btn-s" id="startBtn">Р—Р°РїСѓСЃС‚РёС‚СЊ</button>
+<button class="btn btn-d" id="stopBtn">РћСЃС‚Р°РЅРѕРІРёС‚СЊ</button>
 <span class="status" id="status">...</span>
-</div>
-<div class="info" id="info"></div>
 </div>
 </div>
 <script>
 var API='/cgi-bin/admin.cgi';
 
-function setStatus(on, msg) {
+function setStatus(running) {
     var el = document.getElementById('status');
-    if (on) { el.textContent = '\u25cf Запущен'; el.className = 'status on'; }
-    else { el.textContent = '\u25cb Остановлен'; el.className = 'status off'; }
+    el.textContent = running ? '\u25cf Р—Р°РїСѓС‰РµРЅ' : '\u25cb РћСЃС‚Р°РЅРѕРІР»РµРЅ';
+    el.className = 'status ' + (running ? 'on' : 'off');
     document.getElementById('startBtn').disabled = false;
-    document.getElementById('stopBtn').disabled = !on;
-    document.getElementById('startBtn').textContent = on ? '\u2713 Работает' : 'Запустить';
-    document.getElementById('stopBtn').textContent = 'Остановить';
-    if (msg) document.getElementById('info').textContent = msg;
+    document.getElementById('startBtn').textContent = running ? '\u2713 Р Р°Р±РѕС‚Р°РµС‚' : 'Р—Р°РїСѓСЃС‚РёС‚СЊ';
+    document.getElementById('stopBtn').disabled = !running;
+    document.getElementById('stopBtn').textContent = 'РћСЃС‚Р°РЅРѕРІРёС‚СЊ';
 }
 
 function checkStatus() {
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', API, true);
-    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.open('GET', API + '?action=server_status', true);
     xhr.timeout = 5000;
     xhr.onload = function() {
         try {
             var r = JSON.parse(xhr.responseText);
-            // check_update returns server running info if admin.cgi responds
-            setStatus(true, 'Версия: ' + (r.current || ''));
-        } catch(e) { setStatus(false, 'Сервер не отвечает'); }
+            setStatus(r.status === 'ok' && r.output.indexOf('running') > -1);
+        } catch(e) { setStatus(false); }
     };
-    xhr.onerror = function() {
-        setStatus(false, 'Сервер не отвечает');
-    };
-    xhr.ontimeout = function() {
-        setStatus(false, 'Сервер не отвечает');
-    };
-    xhr.send('action=check_update');
+    xhr.onerror = function() { setStatus(false); };
+    xhr.ontimeout = function() { setStatus(false); };
+    xhr.send();
+}
+
+function serverAction(action, cb) {
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', API + '?action=' + action, true);
+    xhr.timeout = 15000;
+    xhr.onload = function() { cb(true); };
+    xhr.onerror = function() { cb(false); };
+    xhr.ontimeout = function() { cb(false); };
+    xhr.send();
 }
 
 document.getElementById('startBtn').addEventListener('click', function() {
     this.disabled = true;
-    this.textContent = 'Запуск...';
-    document.getElementById('status').textContent = 'Запуск...';
+    this.textContent = 'Р—Р°РїСѓСЃРє...';
+    document.getElementById('status').textContent = 'Р—Р°РїСѓСЃРє...';
     document.getElementById('status').className = 'status';
-    document.getElementById('info').textContent = '';
-
-    // Try to start via init.d or direct uhttpd
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', API, true);
-    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-    xhr.timeout = 10000;
-
-    xhr.onload = function() {
-        setTimeout(checkStatus, 3000);
-    };
-    xhr.onerror = function() {
-        // Admin server was down, so we can't reach it.
-        // The /etc/iptv/IPTV-Manager.sh start command was already run on the router.
-        // Just wait and check:
-        setTimeout(checkStatus, 4000);
-    };
-    xhr.ontimeout = function() {
-        setTimeout(checkStatus, 4000);
-    };
-    xhr.send('action=check_update');
+    serverAction('server_start', function(ok) {
+        setTimeout(checkStatus, 5000);
+    });
 });
 
 document.getElementById('stopBtn').addEventListener('click', function() {
     this.disabled = true;
-    this.textContent = 'Остановка...';
-    document.getElementById('status').textContent = 'Остановка...';
+    this.textContent = 'РћСЃС‚Р°РЅРѕРІРєР°...';
+    document.getElementById('status').textContent = 'РћСЃС‚Р°РЅРѕРІРєР°...';
     document.getElementById('status').className = 'status off';
-    document.getElementById('info').textContent = '';
-
-    var xhr = new XMLHttpRequest();
-    xhr.open('POST', API, true);
-    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-    xhr.timeout = 10000;
-
-    xhr.onload = function() {
-        setTimeout(checkStatus, 2000);
-    };
-    xhr.onerror = function() {
-        setTimeout(checkStatus, 2000);
-    };
-    xhr.ontimeout = function() {
-        setTimeout(checkStatus, 2000);
-    };
-    xhr.send('action=stop_server');
+    serverAction('server_stop', function(ok) {
+        setTimeout(checkStatus, 3000);
+    });
 });
 
-// Auto-detect theme
 (function(){
-    if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt')}
-    else{try{var t=localStorage.getItem('iptv-theme');if(t)document.documentElement.setAttribute('data-theme',t)}catch(e){}}
+    if(window.parent !== window) {
+        document.documentElement.setAttribute('data-theme', 'openwrt');
+    } else {
+        try {
+            var t = localStorage.getItem('iptv-theme');
+            if(t) document.documentElement.setAttribute('data-theme', t);
+        } catch(e) {}
+    }
 })();
 
-// Initial check
-setTimeout(checkStatus, 500);
+checkStatus();
 </script>
 </body>
 </html>
