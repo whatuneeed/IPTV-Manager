@@ -842,19 +842,19 @@ if [ -n "$ACTION" ]; then
             (
                 sleep 2
                 kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+                kill $(cat /var/run/iptv-httpd.pid 2>/dev/null) 2>/dev/null
                 sleep 1
                 rm -f /etc/iptv/iptv.conf /etc/iptv/epg.conf /etc/iptv/schedule.conf
                 rm -f /etc/iptv/security.conf /etc/iptv/favorites.json /etc/iptv/provider.conf
                 rm -f /etc/iptv/playlist.m3u /tmp/iptv-started
+                rm -f /var/run/iptv-httpd.pid /tmp/iptv-reset-new.sh
                 # Download fresh script 
-                TMPN="/tmp/IPTV-Manager-new.sh"
-                if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
-                    cp "$TMPN" /etc/iptv/IPTV-Manager.sh
+                if wget -q --timeout=30 --no-check-certificate -O /tmp/iptv-reset-new.sh "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s /tmp/iptv-reset-new.sh ]; then
+                    cp /tmp/iptv-reset-new.sh /etc/iptv/IPTV-Manager.sh
                     chmod +x /etc/iptv/IPTV-Manager.sh
-                    rm -f "$TMPN"
-                    # Start fresh (nohup so it survives parent exiting)
-                    nohup /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
                 fi
+                # Start server using start_http_server 
+                nohup sh -c 'source /etc/iptv/IPTV-Manager.sh 2>/dev/null; start_http_server' >/tmp/iptv-reset.log 2>&1 &
             ) </dev/null >/dev/null 2>&1 &
             sleep 1
             exit 0
