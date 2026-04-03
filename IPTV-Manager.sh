@@ -119,14 +119,14 @@ generate_server_html() {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>IPTV Server</title>
+<title>IPTV Manager — Сервер</title>
 <style>
-:root{--bg:#f0f2f5;--card:#fff;--text:#1a1a2e;--text2:#666;--border:#e0e0e0;--primary:#1a73e8;--primary-hover:#1557b0;--success:#1e8e3e;--danger:#d93025;--shadow:0 1px 3px rgba(0,0,0,.06);--btn-bg:#fafafa}
-[data-theme="dark"]{--bg:#0a0e1a;--card:#1e293b;--text:#e2e8f0;--text2:#94a3b8;--border:#334155;--primary:#3b82f6;--primary-hover:#2563eb;--success:#22c55e;--danger:#ef4444;--shadow:0 1px 3px rgba(0,0,0,.2);--btn-bg:#0f172a}
-[data-theme="openwrt"]{--bg:#1a1b26;--card:#24283b;--text:#c0caf5;--text2:#9aa5ce;--border:#3b4261;--primary:#7aa2f7;--primary-hover:#6893db;--success:#9ece6a;--danger:#f7768e;--shadow:0 1px 3px rgba(0,0,0,.2);--btn-bg:#1e2030}
+:root{--bg:#f0f2f5;--card:#fff;--text:#1a1a2e;--text2:#666;--border:#e0e0e0;--primary:#1a73e8;--success:#1e8e3e;--danger:#d93025;--btn-bg:#fafafa}
+[data-theme="dark"]{--bg:#0a0e1a;--card:#1e293b;--text:#e2e8f0;--text2:#94a3b8;--border:#334155;--primary:#3b82f6;--success:#22c55e;--danger:#ef4444;--btn-bg:#0f172a}
+[data-theme="openwrt"]{--bg:#1a1b26;--card:#24283b;--text:#c0caf5;--text2:#9aa5ce;--border:#3b4261;--primary:#7aa2f7;--success:#9ece6a;--danger:#f7768e;--btn-bg:#1e2030}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
-.c{background:var(--card);border-radius:12px;padding:32px;border:1px solid var(--border);box-shadow:var(--shadow);text-align:center;max-width:360px;width:90%}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:10px}
+.c{background:var(--card);border-radius:12px;padding:32px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.06);text-align:center;max-width:360px;width:90%}
 h1{font-size:20px;margin-bottom:8px;color:var(--primary)}
 #status{font-size:14px;color:var(--text2);margin:16px 0;padding:12px;background:var(--btn-bg);border-radius:8px;border:1px solid var(--border)}
 .btns{display:flex;gap:10px;justify-content:center;margin-top:20px}
@@ -139,7 +139,7 @@ h1{font-size:20px;margin-bottom:8px;color:var(--primary)}
 </head>
 <body>
 <div class="c">
-<h1>IPTV Manager</h1>
+<h1>Сервер</h1>
 <div id="status">Загрузка...</div>
 <div class="btns">
 <button class="b bs" id="startBtn">Запустить</button>
@@ -148,46 +148,49 @@ h1{font-size:20px;margin-bottom:8px;color:var(--primary)}
 <p class="p">Управление IPTV сервером</p>
 </div>
 <script>
-(function(){
-var api='/cgi-bin/admin.cgi';
+var API='/cgi-bin/admin.cgi';
 if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt')}
 else{try{var t=localStorage.getItem('iptv-theme');if(t==='dark'||t==='openwrt')document.documentElement.setAttribute('data-theme',t)}catch(e){}}
 function qs(s){return document.querySelector(s)}
-function setStatus(m){qs('#status').textContent=m}
-function xhr(a,cb){
-var x=new XMLHttpRequest();
-x.open('POST',api,true);
-x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
-x.onload=function(){try{cb(JSON.parse(x.responseText))}catch(e){cb({status:'error'})}};
-x.onerror=function(){cb({status:'error'})};
-x.send('action='+a);
+function setStatus(working){
+qs('#status').textContent=working?'● Запущен':'○ Остановлен';
+qs('#status').style.color=working?'var(--success)':'var(--text2)';
+var sb=qs('#startBtn');
+sb.disabled=false;
+sb.textContent=working?'\u2713 Работает':'Запустить';
+var ob=qs('#stopBtn');
+ob.disabled=!working;
 }
-function checkStatus(){
-xhr('server_status',function(r){
-if(r.status==='ok'){
-var o=r.output||'';
-setStatus('Сервер: '+(o.indexOf('работает')>=0||o.indexOf('running')>=0||o==='online'?'работает':'остановлен'));
-}else{setStatus('Неизвестно')}
-});
+function chk(){
+var x=new XMLHttpRequest();
+x.open('GET',API+'?action=server_status',true);
+x.timeout=5000;
+x.onload=function(){try{var r=JSON.parse(x.responseText);setStatus(r.status==='ok'&&r.output.indexOf('running')>-1)}catch(e){setStatus(false)}};
+x.onerror=function(){setStatus(false)};
+x.ontimeout=function(){setStatus(false)};
+x.send();
 }
 qs('#startBtn').onclick=function(){
-this.disabled=true;
-xhr('server_start',function(r){
-if(r.status==='ok'){setStatus('Запуск...');setTimeout(checkStatus,4000)}
-else{setStatus('Ошибка запуска')}
-qs('#startBtn').disabled=false;
-});
+this.disabled=true;this.textContent='Запуск...';
+qs('#status').textContent='Запуск...';qs('#status').style.color='var(--primary)';
+var x=new XMLHttpRequest();
+x.open('GET',API+'?action=server_start',true);x.timeout=15000;
+x.onload=function(){setTimeout(chk,10000)};
+x.onerror=function(){x.ontimeout()};
+x.ontimeout=function(){setTimeout(chk,10000)};
+x.send();
 };
 qs('#stopBtn').onclick=function(){
-this.disabled=true;
-xhr('server_stop',function(r){
-if(r.status==='ok'){setStatus('Остановка...');setTimeout(checkStatus,2000)}
-else{setStatus('Ошибка остановки')}
-qs('#stopBtn').disabled=false;
-});
+this.disabled=true;this.textContent='Остановка...';
+qs('#status').textContent='Остановка...';qs('#status').style.color='var(--danger)';
+var x=new XMLHttpRequest();
+x.open('GET',API+'?action=server_stop',true);x.timeout=15000;
+x.onload=function(){setTimeout(chk,5000)};
+x.onerror=function(){x.ontimeout()};
+x.ontimeout=function(){setTimeout(chk,5000)};
+x.send();
 };
-checkStatus();
-})();
+chk();
 </script>
 </body>
 </html>
