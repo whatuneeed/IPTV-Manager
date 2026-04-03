@@ -76,7 +76,7 @@ return view.extend({
 
         return E([
             E('h2', {}, _('Сервер')),
-            E('p', {style:'color:#666;font-size:12px;margin-bottom:10px'}, _('Управление IPTV сервером')),
+            E('p', { style: 'color:#666;font-size:12px;margin-bottom:10px' }, _('Управление IPTV сервером')),
             row
         ]);
     }

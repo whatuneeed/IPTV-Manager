@@ -2662,6 +2662,13 @@ INITEOF
     echo -ne "${YELLOW}> ${NC}"
     read luci_choice </dev/tty
     if [ "$luci_choice" = "1" ]; then
+        # Clean old/invalid files BEFORE installing new ones
+        rm -rf /www/luci-static/resources/view/iptv-manager
+        rm -f /usr/share/luci/menu.d/luci-app-iptv-manager.json
+        rm -f /usr/share/rpcd/acl.d/luci-app-iptv-manager.json
+        rm -f /etc/uci-defaults/99-luci-iptv-manager
+        rm -f /www/cgi-bin/srv.cgi /www/cgi-bin/srv.html
+        rm -f /usr/lib/lua/luci/view/iptv-manager/*
         echo_info "Скачиваем LuCI-плагин..."
         rm -f /www/luci-static/resources/view/iptv-manager/playlist.js
         rm -f /www/luci-static/resources/view/iptv-manager/epg.js
