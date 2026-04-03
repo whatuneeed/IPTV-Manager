@@ -595,13 +595,15 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"error","message":"Нет команды"}'
             fi ;;
         server_start)
+            # Send response first, then kill + restart uhttpd in background
             printf '{"status":"ok"}'
             (sleep 1; kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 1; mkdir -p /www/iptv/cgi-bin; [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null; nohup uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &) &
             ;;
         server_stop)
+            # Send response first, then kill uhttpd after 3s (gives CGI time to finish)
             printf '{"status":"ok"}'
-            kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null
-            rm -f /var/run/iptv-httpd.pid ;;
+            (sleep 3; kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; rm -f /var/run/iptv-httpd.pid) &
+            ;;
         server_status)
             if [ -f /var/run/iptv-httpd.pid ] && kill -0 "$(cat /var/run/iptv-httpd.pid 2>/dev/null)" 2>/dev/null; then
                 printf '{"status":"ok","output":"running"}'
