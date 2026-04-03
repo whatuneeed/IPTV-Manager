@@ -3026,6 +3026,7 @@ case "$1" in
         kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 1
         # Generate CGI and prepare dirs
         generate_cgi
+        generate_srv_cgi
         mkdir -p /www/iptv/cgi-bin
         [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
         # Start in background with nohup
