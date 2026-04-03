@@ -6,28 +6,15 @@ return view.extend({
     load: function() {
         return L.resolveDefault(uci.load('iptv'), {});
     },
-
     render: function() {
         var lan_ip = uci.get('network', 'lan', 'ipaddr') || '192.168.1.1';
-        var port = '8082';
-
         var frame = E('iframe', {
-            'src': 'http://' + lan_ip + ':' + port + '/server.html',
+            'src': 'http://' + lan_ip + ':8082/server.html',
             'style': 'width:100%;height:calc(100vh - 140px);border:none;',
-            'frameborder': '0',
+            'framebuffer': '0',
             'allowfullscreen': 'true',
             'allow': 'fullscreen'
         });
-
-        return E([
-            E('h2', {}, _('Сервер')),
-            E('p', {}, _('Управление IPTV сервером')),
-            frame
-        ]);
-    }
-});
-
-
         return E([
             E('h2', {}, _('Сервер')),
             E('p', {}, _('Управление IPTV сервером')),
