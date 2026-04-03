@@ -29,7 +29,7 @@
         "title": "Сервер",
         "order": 3,
         "action": {
-            "type": "template",
+            "type": "view",
             "path": "iptv-manager/server"
         }
     }

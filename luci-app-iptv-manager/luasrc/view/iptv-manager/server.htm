@@ -1,6 +1,0 @@
-<%-
-    local uci = require "luci.model.uci".cursor()
-    local lan_ip = uci:get_first("network", "interface", "ipaddr", "192.168.1.1")
-    local port = "8082"
--%>
-<iframe src="http://<%=lan_ip%>:<%=port%>/server.html" style="width:100%;height:calc(100vh - 140px);border:none;" frameborder="0" allowfullscreen="true" allow="fullscreen"></iframe>
