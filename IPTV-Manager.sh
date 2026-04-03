@@ -592,12 +592,9 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"error","message":"Нет команды"}'
             fi ;;
         server_start)
-            kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null
-            sleep 1
-            mkdir -p /www/iptv/cgi-bin
-            [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u
             printf '{"status":"ok"}'
-            nohup uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 & ;;
+            (sleep 1; kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 1; mkdir -p /www/iptv/cgi-bin; [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null; nohup uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &) &
+            ;;
         server_stop)
             printf '{"status":"ok"}'
             kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null

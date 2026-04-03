@@ -54,9 +54,7 @@ function checkStatus() {
         try {
             var r = JSON.parse(xhr.responseText);
             setStatus(r.status === 'ok' && r.output.indexOf('running') > -1);
-        } catch(e) {
-            setStatus(false);
-        }
+        } catch(e) { setStatus(false); }
     };
     xhr.onerror = function() { setStatus(false); };
     xhr.ontimeout = function() { setStatus(false); };
@@ -79,7 +77,7 @@ document.getElementById('startBtn').addEventListener('click', function() {
     document.getElementById('status').textContent = 'Запуск...';
     document.getElementById('status').className = 'status';
     serverAction('server_start', function(ok) {
-        setTimeout(checkStatus, 4000);
+        setTimeout(checkStatus, 5000);
     });
 });
 
@@ -89,7 +87,7 @@ document.getElementById('stopBtn').addEventListener('click', function() {
     document.getElementById('status').textContent = 'Остановка...';
     document.getElementById('status').className = 'status off';
     serverAction('server_stop', function(ok) {
-        setTimeout(checkStatus, 2000);
+        setTimeout(checkStatus, 3000);
     });
 });
 
