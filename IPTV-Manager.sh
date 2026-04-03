@@ -804,40 +804,54 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"ok","output":"stopped"}'
             fi ;;
         auto_update_keep)
-            printf '{"status":"ok","message":"Скачивание обновления..."}' &
-            TMPN="/tmp/IPTV-Manager-new.sh"
+            printf '{"status":"ok","message":"Скачивание обновления..."}'
             (
-                # 1. Download fresh script
-                wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null
-                if [ ! -s "$TMPN" ]; then exit 1; fi
-                # 2. Kill old uhttpd
-                kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
                 sleep 1
-                # 3. Replace script
-                cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
-                chmod +x "$IPTV_DIR/IPTV-Manager.sh"
-                rm -f "$TMPN"
-                # 4. Generate all CGI and start (this includes srv.cgi!)
-                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
+                TMPN="/tmp/IPTV-Manager-new.sh"
+                if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
+                    kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+                    sleep 1
+                    # Save configs before replacing script
+                    cp /etc/iptv/iptv.conf /tmp/_save_iptv.conf 2>/dev/null
+                    cp /etc/iptv/epg.conf /tmp/_save_epg.conf 2>/dev/null
+                    cp /etc/iptv/schedule.conf /tmp/_save_sched.conf 2>/dev/null
+                    cp /etc/iptv/security.conf /tmp/_save_sec.conf 2>/dev/null
+                    cp /etc/iptv/favorites.json /tmp/_save_fav.json 2>/dev/null
+                    cp /etc/iptv/playlist.m3u /tmp/_save_pl.m3u 2>/dev/null
+                    # Replace script
+                    cp "$TMPN" /etc/iptv/IPTV-Manager.sh
+                    chmod +x /etc/iptv/IPTV-Manager.sh
+                    rm -f "$TMPN"
+                    # Restore configs
+                    [ -f /tmp/_save_iptv.conf ] && cp /tmp/_save_iptv.conf /etc/iptv/iptv.conf
+                    [ -f /tmp/_save_epg.conf ] && cp /tmp/_save_epg.conf /etc/iptv/epg.conf
+                    [ -f /tmp/_save_sched.conf ] && cp /tmp/_save_sched.conf /etc/iptv/schedule.conf
+                    [ -f /tmp/_save_sec.conf ] && cp /tmp/_save_sec.conf /etc/iptv/security.conf
+                    [ -f /tmp/_save_fav.json ] && cp /tmp/_save_fav.json /etc/iptv/favorites.json
+                    [ -f /tmp/_save_pl.m3u ] && cp /tmp/_save_pl.m3u /etc/iptv/playlist.m3u
+                    rm -f /tmp/_save_*
+                    # Start fresh
+                    /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
+                fi
             ) &
             ;;
         factory_reset)
-            printf '{"status":"ok","message":"Сброс к заводским..."}' &
-            TMPN="/tmp/IPTV-Manager-new.sh"
+            printf '{"status":"ok","message":"Сброс к заводским..."}'
             (
-                sleep 1
+                sleep 2
                 kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
                 sleep 1
-                rm -f "$IPTV_DIR"/*.conf "$IPTV_DIR"/*.json "$IPTV_DIR"/*.m3u
-                rm -f /tmp/iptv-started
+                rm -f /etc/iptv/iptv.conf /etc/iptv/epg.conf /etc/iptv/schedule.conf
+                rm -f /etc/iptv/security.conf /etc/iptv/favorites.json /etc/iptv/provider.conf
+                rm -f /etc/iptv/playlist.m3u /tmp/iptv-started
                 # Download fresh script 
-                wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null
-                if [ -s "$TMPN" ]; then
-                    cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
-                    chmod +x "$IPTV_DIR/IPTV-Manager.sh"
+                TMPN="/tmp/IPTV-Manager-new.sh"
+                if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
+                    cp "$TMPN" /etc/iptv/IPTV-Manager.sh
+                    chmod +x /etc/iptv/IPTV-Manager.sh
                     rm -f "$TMPN"
                 fi
-                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
+                /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
             ) &
             ;;
     esac
