@@ -812,14 +812,17 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"ok","output":"stopped"}'
             fi ;;
         auto_update_keep)
-            printf 'Content-Type: application/json\r\n\r\n{"status":"ok","message":"Скачивание обновления..."}'
+            printf 'Content-Type: application/json\r\n\r\n{"status":"ok","message":"Применяю обновление..."}'
             (
                 sleep 1
                 TMPN="/tmp/IPTV-Manager-new.sh"
-                if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
+                if [ ! -s "$TMPN" ]; then
+                    wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null
+                fi
+                if [ -s "$TMPN" ]; then
                     kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
                     sleep 1
-                    # Save configs before replacing script
+                    # Save configs
                     cp /etc/iptv/iptv.conf /tmp/_save_iptv.conf 2>/dev/null
                     cp /etc/iptv/epg.conf /tmp/_save_epg.conf 2>/dev/null
                     cp /etc/iptv/schedule.conf /tmp/_save_sched.conf 2>/dev/null
@@ -838,9 +841,9 @@ if [ -n "$ACTION" ]; then
                     [ -f /tmp/_save_fav.json ] && cp /tmp/_save_fav.json /etc/iptv/favorites.json
                     [ -f /tmp/_save_pl.m3u ] && cp /tmp/_save_pl.m3u /etc/iptv/playlist.m3u
                     rm -f /tmp/_save_*
+                    # Start server
+                    nohup /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
                 fi
-                # Start fresh (nohup so it survives parent exiting)
-                nohup /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
             ) </dev/null >/dev/null 2>&1 &
             sleep 1
             exit 0
@@ -2494,15 +2497,20 @@ INITEOF
 
 uninstall() {
     echo_color "Полное удаление IPTV Manager"
-    echo -ne "${YELLOW}Вы уверены? Все данные будут удалены! (y/N): ${NC}"
+    echo -ne "${YELLOW}Вы уверены? Абсолютно всё будет удалено! (y/N): ${NC}"
     read ans </dev/tty
     case "$ans" in y|Y|yes|Yes) ;; *) echo_info "Отмена"; return 1 ;; esac
     echo_info "Останавливаем сервисы..."
     stop_http_server
     stop_scheduler
-    echo_info "Удаляем файлы..."
+    echo_info "Удаляем все файлы..."
     rm -rf /etc/iptv /www/iptv
-    rm -f /var/run/iptv-httpd.pid /var/run/iptv-scheduler.pid /tmp/iptv-scheduler.sh /tmp/iptv-edit.m3u /tmp/iptv-group-opts.txt
+    rm -f /var/run/iptv-httpd.pid /var/run/iptv-scheduler.pid
+    rm -f /tmp/iptv-scheduler.sh /tmp/iptv-edit.m3u /tmp/iptv-group-opts.txt
+    rm -f /tmp/iptv-epg.xml.gz /tmp/iptv-epg-dl.xml
+    rm -f /var/run/iptv-ratelimit /tmp/iptv-merged.m3u
+    rm -f /etc/iptv/ip_whitelist.txt
+    rm -rf /www/cgi-bin/srv.cgi /www/cgi-bin/srv.html
     [ -f /etc/init.d/iptv-manager ] && { /etc/init.d/iptv-manager disable 2>/dev/null; rm -f /etc/init.d/iptv-manager; }
     echo_info "Удаляем LuCI-плагин..."
     rm -rf /www/luci-static/resources/view/iptv-manager
@@ -2510,6 +2518,9 @@ uninstall() {
     rm -f /usr/share/rpcd/acl.d/luci-app-iptv-manager.json
     rm -f /etc/uci-defaults/99-luci-iptv-manager
     rm -f /etc/config/iptv
+    rm -rf /usr/lib/lua/luci/controller/iptv-manager*
+    rm -rf /usr/lib/lua/luci/model/cbi/iptv-manager*
+    rm -rf /usr/lib/lua/luci/view/iptv-manager*
     /etc/init.d/rpcd restart 2>/dev/null
     echo_success "IPTV Manager полностью удалён"
     echo_info "Для выхода введите Enter"
@@ -2881,147 +2892,515 @@ reinstall_iptv() {
 }
 
 # ==========================================
+# Функции для нового меню
+# ==========================================
+_set_sched() {
+    load_sched
+    PLAYLIST_INTERVAL="$1"
+    EPG_INTERVAL="$EPG_INTERVAL"
+    [ -n "$EPG_INTERVAL" ] || EPG_INTERVAL="0"
+    save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$EPG_LAST_UPDATE"
+    echo_success "Расписание плейлиста: $(int_text $PLAYLIST_INTERVAL)"
+}
+
+menu_epg_schedule() {
+    print_header
+    load_sched
+    echo -e "${YELLOW}── 📺 EPG Расписание ─────────────────${NC}"
+    echo -e "  EPG: ${CYAN}$(int_text $EPG_INTERVAL)${NC}"
+    echo ""
+    echo -e "${CYAN} 1) Каждый час${NC}"
+    echo -e "${CYAN} 2) Каждые 6ч${NC}"
+    echo -e "${CYAN} 3) Каждые 12ч${NC}"
+    echo -e "${CYAN} 4) Раз в сутки${NC}"
+    echo -e "${CYAN} 5) Выкл${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1) EPG_INTERVAL=1 ;; 2) EPG_INTERVAL=6 ;; 3) EPG_INTERVAL=12 ;; 4) EPG_INTERVAL=24 ;; *) EPG_INTERVAL=0 ;;
+    esac
+    load_sched
+    save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$EPG_LAST_UPDATE"
+    echo_success "EPG расписание: $(int_text $EPG_INTERVAL)"
+    PAUSE
+}
+
+express_setup() {
+    echo_color "🚀 Экспресс-настройка IPTV Manager"
+    echo ""
+    echo -e "${YELLOW}[1/6] Скачиваю последние файлы...${NC}"
+    # Already on latest version
+    echo_success "✓ Готово"
+    
+    echo -e "${YELLOW}[2/6] Загружаю плейлист 'TV'...${NC}"
+    local default_pl="https://raw.githubusercontent.com/smolnp/IPTVru/refs/heads/gh-pages/IPTVru.m3u"
+    if wget -q --timeout=30 --no-check-certificate -O "$PLAYLIST_FILE" "$default_pl" 2>/dev/null && [ -s "$PLAYLIST_FILE" ]; then
+        local ch=$(get_ch)
+        echo_success "✓ Плейлист 'TV' загружен ($ch каналов)"
+        printf 'PLAYLIST_TYPE="url"\nPLAYLIST_URL="%s"\nPLAYLIST_SOURCE=""\nPLAYLIST_NAME="TV"\n' "$default_pl" > "$CONFIG_FILE"
+    else
+        echo_error "✗ Не удалось скачать плейлист"
+    fi
+    
+    echo -e "${YELLOW}[3/6] EPG: пропущено${NC}"
+    echo_success "⊘ EPG настраивается позже через админку"
+    
+    echo -e "${YELLOW}[4/6] Расписание: каждые 6ч...${NC}"
+    save_sched "6" "0" "$(get_ts)" "$(get_ts)"
+    start_scheduler
+    echo_success "✓ Автообновление настроено"
+    
+    echo -e "${YELLOW}[5/6] Запускаю сервер...${NC}"
+    start_http_server
+    echo_success "✓ Сервер запущен"
+    
+    echo -e "${YELLOW}[6/6] Устанавливаю LuCI плагин...${NC}"
+    install_luci_plugin
+    echo_success "✓ Плагин установлен"
+    
+    echo ""
+    echo_color "✅ Готово! IPTV Manager настроен."
+    echo "   Админка: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
+    echo "   Плейлист: http://$LAN_IP:$IPTV_PORT/playlist.m3u"
+    echo "   EPG: http://$LAN_IP:$IPTV_PORT/epg.xml"
+    echo ""
+    echo -e "${YELLOW}Открыть админку в браузере? (y/N): ${NC}"
+    read ans </dev/tty
+    case "$ans" in y|Y|yes|Yes) echo_info "Нажмите Ctrl+Click или скопируйте ссылку" ;; esac
+}
+
+express_factory_reset() {
+    echo_color "🏭 Сброс к заводским"
+    echo -ne "${YELLOW}Удалить все настройки и скачать новую версию? (y/N): ${NC}"
+    read ans </dev/tty
+    case "$ans" in y|Y|yes|Yes) ;; *) echo_info "Отмена"; return 1 ;; esac
+    echo_info "Останавливаем сервер..."
+    stop_http_server
+    stop_scheduler
+    echo_info "Удаляем все данные..."
+    rm -rf "$IPTV_DIR"/*
+    rm -f /tmp/iptv-started /var/run/iptv-httpd.pid
+    echo_info "Загружаем свежую версию..."
+    if wget -q --timeout=30 --no-check-certificate -O "/tmp/IPTV-Manager-new.sh" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "/tmp/IPTV-Manager-new.sh" ]; then
+        cp "/tmp/IPTV-Manager-new.sh" "$IPTV_DIR/IPTV-Manager.sh"
+        chmod +x "$IPTV_DIR/IPTV-Manager.sh"
+        rm -f "/tmp/IPTV-Manager-new.sh"
+        echo_success "Скрипт обновлён. Автоматический запуск..."
+        echo_info "Через 3 секунды..."
+        sleep 3
+        exec sh "$IPTV_DIR/IPTV-Manager.sh"
+    else
+        echo_error "Не удалось скачать. Запуск текущей версии..."
+        sleep 3
+        express_setup
+    fi
+}
+
+setup_password() {
+    print_header
+    . "$SECURITY_FILE" 2>/dev/null
+    echo -e "${YELLOW}── 🔑 Пароль на админку ────────────────${NC}"
+    echo -e "  Текущий: ${CYAN}${ADMIN_USER:—}${NC} / ${CYAN}${ADMIN_PASS:+****}${NC}"
+    echo ""
+    echo -ne "${YELLOW}Логин (пусто=отключить): ${NC}"
+    read u </dev/tty
+    if [ -z "$u" ]; then
+        printf 'ADMIN_USER=""\nADMIN_PASS=""\nAPI_TOKEN="%s"\n' "$(grep API_TOKEN "$SECURITY_FILE" 2>/dev/null | sed 's/.*="//;s/"//')" > "$SECURITY_FILE"
+        echo_success "Пароль отключён"
+    else
+        echo -ne "${YELLOW}Пароль: ${NC}"
+        stty -echo; read p </dev/tty; stty echo; echo ""
+        printf 'ADMIN_USER="%s"\nADMIN_PASS="%s"\nAPI_TOKEN="%s"\n' "$u" "$p" "$(grep API_TOKEN "$SECURITY_FILE" 2>/dev/null | sed 's/.*="//;s/"//')" > "$SECURITY_FILE"
+        echo_success "Пароль установлен"
+    fi
+    PAUSE
+}
+
+setup_api_token() {
+    print_header
+    . "$SECURITY_FILE" 2>/dev/null
+    echo -e "${YELLOW}── 🎫 API токен ─────────────────────${NC}"
+    echo -e "  Текущий: ${CYAN}${API_TOKEN:—}${NC}"
+    echo ""
+    echo -ne "${YELLOW}Токен (пусто=отключить): ${NC}"
+    read t </dev/tty
+    printf 'ADMIN_USER="%s"\nADMIN_PASS="%s"\nAPI_TOKEN="%s"\n' "$(grep ADMIN_USER "$SECURITY_FILE" 2>/dev/null | sed 's/.*="//;s/"//')" "$(grep ADMIN_PASS "$SECURITY_FILE" 2>/dev/null | sed 's/.*="//;s/"//')" "$t" > "$SECURITY_FILE"
+    echo_success "API токен сохранён"
+    PAUSE
+}
+
+setup_whitelist() {
+    print_header
+    echo -e "${YELLOW}── 📋 Белый список IP ─────────────────${NC}"
+    if [ -s "$WHITELIST_FILE" ]; then
+        echo -e "  Текущие IP:"
+        cat "$WHITELIST_FILE" | while read -r ip; do echo "    ${CYAN}$ip${NC}"; done
+    else
+        echo -e "  ${GREEN}Все IP разрешены${NC}"
+    fi
+    echo ""
+    echo -e "${CYAN}1) Добавить IP${NC}"
+    echo -e "${CYAN}2) Очистить (все разрешены)${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1)
+            echo -ne "${YELLOW}IP адрес: ${NC}"
+            read ip </dev/tty
+            echo "$ip" >> "$WHITELIST_FILE"
+            echo_success "Добавлен $ip"
+            ;;
+        2)
+            > "$WHITELIST_FILE"
+            echo_success "Список очищен"
+            ;;
+        9|0) return ;;
+    esac
+    PAUSE
+}
+
+setup_rate_limit() {
+    print_header
+    echo -e "${YELLOW}── 🛡️ Rate Limiting ─────────────────${NC}"
+    echo -e "  Лимит: ${CYAN}$RATE_LIMIT${NC} запросов/мин"
+    echo -e "  Блокировка: ${CYAN}$BLOCK_DURATION${NC} сек"
+    echo ""
+    echo -e "${CYAN}1) Изменить лимит${NC}"
+    echo -e "${CYAN}2) Отключить${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1)
+            echo -ne "${YELLOW}Запросов в минуту: ${NC}"
+            read lim </dev/tty
+            [ -n "$lim" ] && RATE_LIMIT="$lim"
+            echo_success "Лимит: $RATE_LIMIT/мин"
+            ;;
+        2)
+            RATE_LIMIT=0
+            echo_success "Rate limiting отключён"
+            ;;
+        9|0) return ;;
+    esac
+    PAUSE
+}
+
+install_luci_plugin() {
+    rm -rf /www/luci-static/resources/view/iptv-manager
+    rm -f /usr/share/luci/menu.d/luci-app-iptv-manager.json
+    rm -f /usr/share/rpcd/acl.d/luci-app-iptv-manager.json
+    rm -f /etc/uci-defaults/99-luci-iptv-manager
+    rm -f /www/cgi-bin/srv.cgi /www/cgi-bin/srv.html
+    mkdir -p /www/luci-static/resources/view/iptv-manager
+    local luci_base="https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/luci-app-iptv-manager"
+    for f in "htdocs/luci-static/resources/view/iptv-manager/iptv.js" "htdocs/luci-static/resources/view/iptv-manager/player.js" "htdocs/luci-static/resources/view/iptv-manager/server.js" "htdocs/luci-static/resources/view/iptv-manager/srv.cgi" "htdocs/luci-static/resources/view/iptv-manager/srv.html" "root/usr/share/luci/menu.d/luci-app-iptv-manager.json" "root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json" "root/etc/uci-defaults/99-luci-iptv-manager"; do
+        local dest=""
+        case "$f" in
+            root/*) dest="/${f#root/}" ;;
+            htdocs/*) dest="/www/${f#htdocs/}" ;;
+            *) dest="/$f" ;;
+        esac
+        mkdir -p "$(dirname "$dest")"
+        wget -q --timeout=10 --no-check-certificate -O "$dest" "$luci_base/$f" 2>/dev/null
+    done
+    chmod +x /etc/uci-defaults/99-luci-iptv-manager 2>/dev/null
+    /etc/uci-defaults/99-luci-iptv-manager 2>/dev/null
+    /etc/init.d/rpcd restart 2>/dev/null
+}
+
+# ==========================================
 # Меню
 # ==========================================
 print_header() {
     clear
     load_sched
-    echo -e "${MAGENTA}╔══════════════════════════════════════════╗"
-    echo -e "║     IPTV Manager v$IPTV_MANAGER_VERSION                  ║"
-    echo -e "╠══════════════════════════════════════════╣"
-    echo -e "║${NC} IP: ${CYAN}$LAN_IP  Port: ${CYAN}$IPTV_PORT                    ${MAGENTA}║"
-    echo -e "╚══════════════════════════════════════════╝${NC}"
-    echo ""
-    load_config
-    echo -e "${CYAN}Плейлист:${NC} $([ "$PLAYLIST_TYPE" = "url" ] && echo "$PLAYLIST_URL" || echo "$PLAYLIST_TYPE")"
-    load_epg
-    local display_epg="не настроен"
-    [ -n "$EPG_URL" ] && display_epg=$(echo "$EPG_URL" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
-    echo -e "${CYAN}EPG:${NC} $display_epg"
-    echo -e "${CYAN}Расписание:${NC} Плейлист=$(int_text $PLAYLIST_INTERVAL) | EPG=$(int_text $EPG_INTERVAL)"
-    [ -n "$PLAYLIST_LAST_UPDATE" ] && echo -e "${CYAN}Обновлён:${NC} $PLAYLIST_LAST_UPDATE"
-    echo ""
-    if [ -f "$HTTPD_PID" ] && kill -0 $(cat "$HTTPD_PID") 2>/dev/null; then
-        echo_success "Сервер: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
-    else
-        echo_error "Сервер: остановлен"
+    local ch=$(get_ch)
+    local srv_status="❌ Остановлен"
+    local srv_uptime=""
+    if [ -f "$HTTPD_PID" ] && kill -0 "$(cat "$HTTPD_PID" 2>/dev/null)" 2>/dev/null; then
+        srv_status="✅ Запущен"
+        if [ -f "$STARTUP_TIME" ]; then
+            local _sn=$(cat "$STARTUP_TIME" 2>/dev/null)
+            if [ -n "$_sn" ]; then
+                local _now=$(date +%s)
+                local _diff=$((_now - _sn))
+                if [ "$_diff" -gt 0 ] 2>/dev/null; then
+                    local _id=$((_diff / 86400)); local _ih=$(((_diff % 86400) / 3600)); local _im=$(((_diff % 3600) / 60))
+                    srv_uptime=""; [ "$_id" -gt 0 ] && srv_uptime="${_id}д "
+                    srv_uptime="${srv_uptime}${_ih}ч ${_im}м"
+                fi
+            fi
+        fi
     fi
+    load_config
+    load_epg
+    local display_epg="❌"
+    [ -n "$EPG_URL" ] && display_epg="✅"
+    local display_ram="$(du -sh /etc/iptv 2>/dev/null | cut -f1)"
+    [ -z "$display_ram" ] && display_ram="0K"
+ 
+    local display_disk="$(du -sh /www/iptv 2>/dev/null | cut -f1)"
+    [ -z "$display_disk" ] && display_disk="0K"
+
+    echo ""
+    echo -e "${MAGENTA}╔══════════════════════════════════════════╗${NC}"
+    echo -e "${MAGENTA}║${NC}     IPTV Manager v${CYAN}$IPTV_MANAGER_VERSION${MAGENTA}                  ║${NC}"
+    echo -e "${MAGENTA}╠══════════════════════════════════════════╣${NC}"
+    echo -e "${MAGENTA}║${NC} 🌐 ${CYAN}$LAN_IP${MAGENTA}:${CYAN}$IPTV_PORT${NC}      📺 ${GREEN}$ch${NC} каналов    ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}║${NC} 📡 EPG: ${CYAN}$display_epg${NC}   💾 ${CYAN}$display_ram${NC}   🗄️ ${CYAN}$display_disk${NC}     ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}║${NC} 🖥️  Сервер: ${GREEN}$srv_status${NC}  ⏱️ ${CYAN}${srv_uptime:-—}${NC}  ${MAGENTA}║${NC}"
+    echo -e "${MAGENTA}╚══════════════════════════════════════════╝${NC}"
     echo ""
 }
 
 show_menu() {
     print_header
-    echo -e "${YELLOW}── Главное меню ──────────────────────${NC}"
-    echo -e "${CYAN} 1) ${GREEN}Первоначальная настройка${NC}"
-    echo -e "${CYAN} 2) ${GREEN}Плейлист${NC}"
-    echo -e "${CYAN} 3) ${GREEN}Телепрограмма (EPG)${NC}"
-    echo -e "${CYAN} 4) ${GREEN}Сервер${NC}"
-    echo -e "${CYAN} 5) ${GREEN}Настройки${NC}"
-    echo -e "${CYAN} 6) ${GREEN}Обновление / Установка${NC}"
+    load_config
+    local has_pl=false
+    [ -n "$PLAYLIST_TYPE" ] && [ -n "$PLAYLIST_URL" ] && has_pl=true
+    if [ "$has_pl" = "false" ] && [ ! -f "$HTTPD_PID" ]; then
+        echo -e "${MAGENTA}╠══════════════════════════════════════════╣${NC}"
+        echo -e "${MAGENTA}║${NC}  💡 ${CYAN}IPTV Manager не настроен                 ${MAGENTA}║${NC}"
+        echo -e "${MAGENTA}║${NC}  Нажмите ${GREEN}1${NC} для быстрой настройки        ${MAGENTA}║${NC}"
+        echo -e "${MAGENTA}╚══════════════════════════════════════════╝${NC}"
+        echo ""
+        echo -e "${YELLOW}── 🚀 Экспресс-настройка ──────────────${NC}"
+        echo -e "${CYAN} 1) ${GREEN}Запустить настройку${NC}"
+        echo ""
+        echo -e "${CYAN} q) Выход${NC}"
+        echo ""
+        echo -ne "${YELLOW}> ${NC}"
+        read c </dev/tty
+        case "$c" in
+            1) express_setup ;; q|Q) exit 0 ;; *) echo_info "Выход"; exit 0 ;;
+        esac
+        PAUSE
+        return
+    fi
+
+    echo -e "${YELLOW}── Главное меню ─────────────────────────${NC}"
+    echo -e "${CYAN} 1) ${GREEN}📡  Плейлист${NC}          (загрузка, провайдер)"
+    echo -e "${CYAN} 2) ${GREEN}📺  Телепрограмма${NC}      (EPG)"
+    echo -e "${CYAN} 3) ${GREEN}🔧  Сервер${NC}             (запуск/остановка)"
+    echo -e "${CYAN} 4) ${GREEN}⏰  Расписание${NC}          (автообновление)"
+    echo -e "${CYAN} 5) ${GREEN}🔒  Безопасность${NC}        (пароль, API, IP)"
+    echo -e "${CYAN} 6) ${GREEN}💾  Бэкап${NC}              (сохранить/восстановить)"
+    echo -e "${CYAN} 7) ${GREEN}🔄  Обновление${NC}          (версия, сброс)"
     echo ""
-    echo -e "${RED} 0) ${RED}Удалить IPTV Manager${NC}"
-    echo ""
-    echo -e "${CYAN}Enter) ${GREEN}Выход${NC}"
+    echo -e "${CYAN} 0) Удалить IPTV Manager${NC}"
+    echo -e "${CYAN} q) Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"
     read c </dev/tty
     case "$c" in
-        1) first_setup ;; 2) menu_playlist ;; 3) menu_epg ;; 4) menu_server ;;
-        5) menu_settings ;; 6) menu_update ;;
-        0) uninstall ;; *) echo_info "Выход"; exit 0 ;;
+        1) menu_playlist ;; 2) menu_epg ;; 3) menu_server ;;
+        4) menu_schedule ;; 5) menu_security ;; 6) menu_backup ;;
+        7) menu_update ;; 0) menu_uninstall ;; q|Q) exit 0 ;;
+        *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
 
 menu_playlist() {
     print_header
-    echo -e "${YELLOW}── Плейлист ──────────────────────────${NC}"
-    echo -e "${CYAN} 1) ${GREEN}Загрузить по ссылке${NC}"
-    echo -e "${CYAN} 2) ${GREEN}Загрузить из файла${NC}"
-    echo -e "${CYAN} 3) ${GREEN}Настроить провайдера${NC}"
-    echo -e "${CYAN} 4) ${GREEN}Обновить плейлист${NC}"
-    echo -e "${CYAN} 5) ${GREEN}Удалить плейлист${NC}"
+    load_config
+    echo -e "${YELLOW}── 📡 Плейлист ──────────────────────────${NC}"
+    echo -e "  Название: ${CYAN}${PLAYLIST_NAME:—}${NC}"
+    echo -e "  Каналов: ${GREEN}$(get_ch)${NC}"
     echo ""
-    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    echo -e "${CYAN} 1) Загрузить по ссылке${NC}"
+    echo -e "${CYAN} 2) Загрузить из файла${NC}"
+    echo -e "${CYAN} 3) Настроить провайдера${NC}"
+    echo -e "${CYAN} 4) Обновить плейлист${NC}"
+    echo -e "${CYAN} 5) Удалить плейлист${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"
     read c </dev/tty
     case "$c" in
         1) load_playlist_url ;; 2) load_playlist_file ;; 3) setup_provider ;;
         4) do_update_playlist ;; 5) remove_playlist ;;
-        0) return ;; *) echo_info "Отмена"; return ;;
+        9|0) return ;; *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
 
 menu_epg() {
     print_header
-    echo -e "${YELLOW}── Телепрограмма (EPG) ───────────────${NC}"
-    echo -e "${CYAN} 1) ${GREEN}Настроить EPG${NC}"
-    echo -e "${CYAN} 2) ${GREEN}Обновить EPG${NC}"
-    echo -e "${CYAN} 3) ${GREEN}Удалить EPG${NC}"
+    load_epg
+    echo -e "${YELLOW}── 📺 Телепрограмма (EPG) ───────────────${NC}"
+    echo -e "  URL: ${CYAN}${EPG_URL:—}${NC}"
     echo ""
-    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    echo -e "${CYAN} 1) Настроить EPG${NC}"
+    echo -e "${CYAN} 2) Обновить EPG${NC}"
+    echo -e "${CYAN} 3) Удалить EPG${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"
     read c </dev/tty
     case "$c" in
         1) setup_epg ;; 2) do_update_epg ;; 3) remove_epg ;;
-        0) return ;; *) echo_info "Отмена"; return ;;
+        9|0) return ;; *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
 
 menu_server() {
     print_header
-    echo -e "${YELLOW}── Сервер ────────────────────────────${NC}"
-    echo -e "${CYAN} 1) ${GREEN}Запустить${NC}"
-    echo -e "${CYAN} 2) ${GREEN}Остановить${NC}"
+    local srv_status="❌ Остановлен"
+    if [ -f "$HTTPD_PID" ] && kill -0 "$(cat "$HTTPD_PID" 2>/dev/null)" 2>/dev/null; then
+        srv_status="✅ Запущен"
+    fi
+    echo -e "${YELLOW}── 🔧 Сервер ────────────────────────${NC}"
+    echo -e "  Статус: ${CYAN}$srv_status${NC}"
+    echo -e "  Порт: ${CYAN}$IPTV_PORT${NC}"
     echo ""
-    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    if [ -f "$HTTPD_PID" ] && kill -0 "$(cat "$HTTPD_PID" 2>/dev/null)" 2>/dev/null; then
+        echo -e "${CYAN} 1) ⏹  Остановить${NC}"
+        echo -e "${CYAN} 2) 🔄 Перезапустить${NC}"
+    else
+        echo -e "${CYAN} 1) ▶  Запустить${NC}"
+    fi
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"
     read c </dev/tty
+    local srv_up=false
+    [ -f "$HTTPD_PID" ] && kill -0 "$(cat "$HTTPD_PID" 2>/dev/null)" 2>/dev/null && srv_up=true
     case "$c" in
-        1) start_http_server ;; 2) stop_http_server ;;
-        0) return ;; *) echo_info "Отмена"; return ;;
+        1) if [ "$srv_up" = "true" ]; then stop_http_server; else start_http_server; fi ;;
+        2) if [ "$srv_up" = "true" ]; then stop_http_server; sleep 1; start_http_server; fi ;;
+        9|0) return ;; *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
 
-menu_settings() {
+menu_schedule() {
     print_header
-    echo -e "${YELLOW}── Настройки ─────────────────────────${NC}"
-    echo -e "${CYAN} 1) ${GREEN}Расписание обновлений${NC}"
-    echo -e "${CYAN} 2) ${GREEN}Автозапуск${NC}"
+    load_sched
+    echo -e "${YELLOW}── ⏰ Расписание ───────────────────────${NC}"
+    echo -e "  Плейлист: ${CYAN}$(int_text $PLAYLIST_INTERVAL)${NC}   (обновлён: ${CYAN}${PLAYLIST_LAST_UPDATE:—}${NC})"
+    echo -e "  EPG: ${CYAN}$(int_text $EPG_INTERVAL)${NC}"
     echo ""
-    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    echo -e "${CYAN} 1) ⏱️  Каждый час${NC}"
+    echo -e "${CYAN} 2) ⏱️  Каждые 6ч${NC}"
+    echo -e "${CYAN} 3) ⏱️  Каждые 12ч${NC}"
+    echo -e "${CYAN} 4) ⏱️  Раз в сутки${NC}"
+    echo -e "${CYAN} 5) ⏱️  Выкл${NC}"
+    echo ""
+    echo -e "${CYAN} 6) 📺 Настроить EPG расписание${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"
     read c </dev/tty
     case "$c" in
-        1) setup_schedule ;; 2) setup_autostart ;;
-        0) return ;; *) echo_info "Отмена"; return ;;
+        1) _set_sched "1" ;; 2) _set_sched "6" ;; 3) _set_sched "12" ;;
+        4) _set_sched "24" ;; 5) _set_sched "0" ;;
+        6) menu_epg_schedule ;;
+        9|0) return ;; *) echo_info "Отмена"; return ;;
+    esac
+    PAUSE
+}
+
+menu_security() {
+    print_header
+    . "$SECURITY_FILE" 2>/dev/null
+    local pw_status="❌ Не установлен"
+    [ -n "$ADMIN_USER" ] && [ -n "$ADMIN_PASS" ] && pw_status="✅ Установлен"
+    local api_status="❌ Не задан"
+    [ -n "$API_TOKEN" ] && api_status="✅ Задан"
+    echo -e "${YELLOW}── 🔒 Безопасность ──────────────────────${NC}"
+    echo -e "  Пароль: ${CYAN}$pw_status${NC}"
+    echo -e "  API токен: ${CYAN}$api_status${NC}"
+    echo ""
+    echo -e "${CYAN} 1) 🔑 Пароль на админку${NC}"
+    echo -e "${CYAN} 2) 🎫 API токен${NC}"
+    echo -e "${CYAN} 3) 📋 Белый список IP${NC}"
+    echo -e "${CYAN} 4) 🛡️ Rate Limiting${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1) setup_password ;; 2) setup_api_token ;;
+        3) setup_whitelist ;; 4) setup_rate_limit ;;
+        9|0) return ;; *) echo_info "Отмена"; return ;;
+    esac
+    PAUSE
+}
+
+menu_backup() {
+    print_header
+    echo -e "${YELLOW}── 💾 Бэкап и восстановление ────────────${NC}"
+    echo ""
+    echo -e "${CYAN} 1) 📦 Создать бэкап${NC}"
+    echo -e "${CYAN} 2) 📂 Восстановить из бэкапа${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1) act 'backup' '' 2>/dev/null | head -1 ; echo_info "Бэкап создан" ;; 2) do_import ;;
+        9|0) return ;; *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
 
 menu_update() {
     print_header
-    echo -e "${YELLOW}── Обновление / Установка ────────────${NC}"
-    echo -e "${CYAN} 1) ${GREEN}Проверить обновления${NC}"
-    echo -e "${CYAN} 2) ${GREEN}Обновить скрипт${NC}"
-    echo -e "${CYAN} 3) ${GREEN}Установить на роутер${NC}"
-    echo -e "${CYAN} 4) ${GREEN}Переустановить${NC}"
+    echo -e "${YELLOW}── 🔄 Обновление ────────────────────────${NC}"
     echo ""
-    echo -e "${YELLOW} 0) ${GREEN}Назад${NC}"
+    echo -e "${CYAN} 1) 🔍 Проверить обновления${NC}"
+    echo -e "${CYAN} 2) ⬇️  Обновить (с сохранением настроек)${NC}"
+    echo -e "${CYAN} 3) 🏭 Сброс к заводским${NC}"
+    echo -e "${CYAN} 4) ❌ Удалить IPTV Manager${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
     echo ""
     echo -ne "${YELLOW}> ${NC}"
     read c </dev/tty
     case "$c" in
         1) check_for_updates ;; 2) do_update_script ;;
-        3) install_iptv ;; 4) reinstall_iptv ;;
-        0) return ;; *) echo_info "Отмена"; return ;;
+        3) express_factory_reset ;; 4) menu_uninstall ;;
+        9|0) return ;; *) echo_info "Отмена"; return ;;
+    esac
+    PAUSE
+}
+
+menu_uninstall() {
+    print_header
+    echo -e "${YELLOW}── ❌ Полное удаление ──────────────────${NC}"
+    echo -e "  Будет удалено:"
+    echo -e "  • Все конфиги и настройки"
+    echo -e "  • Плейлист и EPG"
+    echo -e "  • Временные файлы"
+    echo -e "  • LuCI плагин"
+    echo -e "  • Init-скрипт"
+    echo ""
+    echo -e "${RED} 1) Удалить IPTV Manager${NC}"
+    echo ""
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
+    echo ""
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1) uninstall ;;
+        9|0) return ;; *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
