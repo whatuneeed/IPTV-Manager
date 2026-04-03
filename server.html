@@ -35,43 +35,42 @@ h2{font-size:18px;margin-bottom:4px}
 </div>
 <script>
 var API='/cgi-bin/admin.cgi';
-var IPTV_CMD='/etc/iptv/IPTV-Manager.sh';
 
-function setStatus(running, msg) {
+function setStatus(running) {
     var el = document.getElementById('status');
     el.textContent = running ? '\u25cf Запущен' : '\u25cb Остановлен';
     el.className = 'status ' + (running ? 'on' : 'off');
     document.getElementById('startBtn').disabled = false;
-    document.getElementById('stopBtn').disabled = !running;
     document.getElementById('startBtn').textContent = running ? '\u2713 Работает' : 'Запустить';
+    document.getElementById('stopBtn').disabled = !running;
     document.getElementById('stopBtn').textContent = 'Остановить';
 }
 
 function checkStatus() {
     var xhr = new XMLHttpRequest();
-    xhr.open('GET', API + '?action=check_update', true);
+    xhr.open('GET', API + '?action=server_status', true);
     xhr.timeout = 5000;
     xhr.onload = function() {
-        setStatus(true);
+        try {
+            var r = JSON.parse(xhr.responseText);
+            setStatus(r.status === 'ok' && r.output.indexOf('running') > -1);
+        } catch(e) {
+            setStatus(false);
+        }
     };
-    xhr.onerror = function() {
-        setStatus(false);
-    };
-    xhr.ontimeout = function() {
-        setStatus(false);
-    };
+    xhr.onerror = function() { setStatus(false); };
+    xhr.ontimeout = function() { setStatus(false); };
     xhr.send();
 }
 
-function execCmd(cmd, cb) {
+function serverAction(action, cb) {
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', API, true);
-    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+    xhr.open('GET', API + '?action=' + action, true);
     xhr.timeout = 15000;
-    xhr.onload = function() { try { cb(null, JSON.parse(xhr.responseText)); } catch(e) { cb(null, null); } };
-    xhr.onerror = function() { cb(null, null); };
-    xhr.ontimeout = function() { cb(null, null); };
-    xhr.send('action=exec_cmd&cmd=' + encodeURIComponent(cmd));
+    xhr.onload = function() { cb(true); };
+    xhr.onerror = function() { cb(false); };
+    xhr.ontimeout = function() { cb(false); };
+    xhr.send();
 }
 
 document.getElementById('startBtn').addEventListener('click', function() {
@@ -79,7 +78,7 @@ document.getElementById('startBtn').addEventListener('click', function() {
     this.textContent = 'Запуск...';
     document.getElementById('status').textContent = 'Запуск...';
     document.getElementById('status').className = 'status';
-    execCmd(IPTV_CMD + ' start', function() {
+    serverAction('server_start', function(ok) {
         setTimeout(checkStatus, 4000);
     });
 });
@@ -89,15 +88,20 @@ document.getElementById('stopBtn').addEventListener('click', function() {
     this.textContent = 'Остановка...';
     document.getElementById('status').textContent = 'Остановка...';
     document.getElementById('status').className = 'status off';
-    execCmd(IPTV_CMD + ' stop', function() {
+    serverAction('server_stop', function(ok) {
         setTimeout(checkStatus, 2000);
     });
 });
 
-// Auto-detect theme (same as admin.cgi)
 (function(){
-    if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt')}
-    else{var t=localStorage.getItem('iptv-theme');if(t)document.documentElement.setAttribute('data-theme',t)}
+    if(window.parent !== window) {
+        document.documentElement.setAttribute('data-theme', 'openwrt');
+    } else {
+        try {
+            var t = localStorage.getItem('iptv-theme');
+            if(t) document.documentElement.setAttribute('data-theme', t);
+        } catch(e) {}
+    }
 })();
 
 checkStatus();

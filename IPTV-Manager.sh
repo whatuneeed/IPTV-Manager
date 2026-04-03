@@ -592,14 +592,22 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"error","message":"Нет команды"}'
             fi ;;
         server_start)
-            /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1
-            printf '{"status":"ok"}' ;;
+            kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null
+            sleep 1
+            mkdir -p /www/iptv/cgi-bin
+            [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u
+            printf '{"status":"ok"}'
+            nohup uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 & ;;
         server_stop)
-            /etc/iptv/IPTV-Manager.sh stop >/dev/null 2>&1
-            printf '{"status":"ok"}' ;;
+            printf '{"status":"ok"}'
+            kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null
+            rm -f /var/run/iptv-httpd.pid ;;
         server_status)
-            _out=$(/etc/iptv/IPTV-Manager.sh status 2>/dev/null)
-            printf '{"status":"ok","output":"%s"}' "$_out" ;;
+            if [ -f /var/run/iptv-httpd.pid ] && kill -0 "$(cat /var/run/iptv-httpd.pid 2>/dev/null)" 2>/dev/null; then
+                printf '{"status":"ok","output":"running"}'
+            else
+                printf '{"status":"ok","output":"stopped"}'
+            fi ;;
     esac
     exit 0
 fi
