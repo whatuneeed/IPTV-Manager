@@ -6,7 +6,7 @@ SELF="$0"
 # IPTV Manager для OpenWrt v3.11
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.12"
+IPTV_MANAGER_VERSION="3.13"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -22,6 +22,16 @@ SCHEDULE_FILE="$IPTV_DIR/schedule.conf"
 FAVORITES_FILE="$IPTV_DIR/favorites.json"
 SECURITY_FILE="$IPTV_DIR/security.conf"
 HTTPD_PID="/var/run/iptv-httpd.pid"
+STARTUP_TIME="/tmp/iptv-start.ts"
+RATE_FILE="/var/run/iptv-ratelimit"
+MERGED_PL="/tmp/iptv-merged.m3u"
+
+# Rate limiting config
+RATE_LIMIT=60 # max requests per minute
+BLOCK_DURATION=300 # seconds to ban
+
+# IP whitelist (empty = all allowed, add IPs one per line)
+WHITELIST_FILE="$IPTV_DIR/ip_whitelist.txt"
 
 mkdir -p "$IPTV_DIR"
 [ -f "$CONFIG_FILE" ] || touch "$CONFIG_FILE"
@@ -29,6 +39,7 @@ mkdir -p "$IPTV_DIR"
 [ -f "$SCHEDULE_FILE" ] || touch "$SCHEDULE_FILE"
 [ -f "$FAVORITES_FILE" ] || echo "[]" > "$FAVORITES_FILE"
 [ -f "$SECURITY_FILE" ] || printf 'ADMIN_USER=""\nADMIN_PASS=""\nAPI_TOKEN=""\n' > "$SECURITY_FILE"
+[ -f "$WHITELIST_FILE" ] || touch "$WHITELIST_FILE"
 
 # LuCI UCI config (required for LuCI plugin to work)
 if ! grep -q 'config iptv' /etc/config/iptv 2>/dev/null; then
@@ -52,6 +63,27 @@ _auto_update() {
 }
 # Always auto-update on startup
 _auto_update
+
+# Rate limiter
+_rate_limit() {
+    local ip=${REMOTE_ADDR:-unknown}
+    local now=$(date +%s)
+    local block_file="/tmp/iptv-blocked-$ip"
+    [ -f "$block_file" ] && [ "$(cat "$block_file")" -gt "$now" ] 2>/dev/null && return 1
+    [ -f "$RATE_FILE" ] || echo "" > "$RATE_FILE"
+    local recent=$(awk -v n=$now 'BEGIN{c=0}{if($1>n-60)c++}END{print c}' "$RATE_FILE")
+    echo "$now" >> "$RATE_FILE"
+    awk -v n=$now '{if($1>n-60)print}' "$RATE_FILE" > /tmp/rf_tmp && mv /tmp/rf_tmp "$RATE_FILE"
+    [ "$recent" -ge "$RATE_LIMIT" ] 2>/dev/null && { echo $((now + BLOCK_DURATION)) > "$block_file"; return 1; }
+    return 0
+}
+
+# IP whitelist check
+_ip_whitelist() {
+    [ -s "$WHITELIST_FILE" ] || return 0
+    local ip="${REMOTE_ADDR%:*}"
+    grep -q "^${ip}$" "$WHITELIST_FILE" 2>/dev/null
+}
 
 # Clean old/invalid CGI before generating
 rm -f /www/iptv/admin.cgi /www/iptv/channels.json /www/iptv/playlist.m3u /www/iptv/epg.xml /www/iptv/epg.cgi
@@ -368,6 +400,18 @@ check_api_token() {
     auth_fail
 }
 check_auth
+# Rate limit & IP whitelist
+_rl_ip="${REMOTE_ADDR%:*}"
+if ! _ip_whitelist; then
+    json_hdr 2>/dev/null
+    printf '{"status":"error","message":"IP ${_rl_ip} not in whitelist"}'
+    exit 0
+fi
+if [ -n "$ACTION" ] && ! _rate_limit; then
+    json_hdr 2>/dev/null
+    printf '{"status":"error","message":"Too many requests, try again later"}'
+    exit 0
+fi
 METHOD="${REQUEST_METHOD:-GET}"
 QUERY="${QUERY_STRING:-}"
 CL="${CONTENT_LENGTH:-0}"
@@ -429,38 +473,55 @@ if [ -n "$ACTION" ]; then
             . "$EC" 2>/dev/null
             case "$PLAYLIST_TYPE" in
                 url)
-                    wget $(wget_opt) -O "$PL" "$PLAYLIST_URL" 2>/dev/null && [ -s "$PL" ] && {
-                        CH=$(grep -c "^#EXTINF" "$PL")
-                        cp "$PL" /www/iptv/playlist.m3u
-                        printf '{"status":"ok","message":"Плейлист обновлён! Каналов: %s"}' "$CH"
-                    } || printf '{"status":"error","message":"Ошибка загрузки"}' ;;
+                    # Validate first
+                    if ! wget -q --spider --timeout=10 --no-check-certificate "$PLAYLIST_URL" 2>/dev/null; then
+                        printf '{"status":"error","message":"URL плейлиста недоступен"}'
+                    else
+                        wget $(wget_opt) -O "$PL" "$PLAYLIST_URL" 2>/dev/null && [ -s "$PL" ] && {
+                            CH=$(grep -c "^#EXTINF" "$PL")
+                            cp "$PL" /www/iptv/playlist.m3u
+                            printf '{"status":"ok","message":"Плейлист обновлён! Каналов: %s"}' "$CH"
+                        } || printf '{"status":"error","message":"Ошибка загрузки"}'
+                    fi ;;
                 *) printf '{"status":"error","message":"Невозможно обновить"}' ;;
             esac ;;
         refresh_epg)
             . "$EXC" 2>/dev/null
             if [ -n "$EPG_URL" ]; then
                 TD="/tmp/epg-dl.tmp"
-                wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$TD" "$EPG_URL" 2>/dev/null && [ -s "$TD" ] && {
-                    M=$(hexdump -n 2 -e '2/1 "%02x"' "$TD" 2>/dev/null)
-                    if [ "$M" = "1f8b" ]; then
-                        cp "$TD" "$EPG_GZ"
-                    else
-                        gzip -c "$TD" > "$EPG_GZ" 2>/dev/null
-                    fi
-                    rm -f "$TD"
+                _epg_ok=false
+                _epg_trials=0
+                # Auto-retry EPG 3 times
+                while [ "$_epg_trials" -lt 3 ] && [ "$_epg_ok" = "false" ]; do
+                    wget -q --timeout=30 --header="User-Agent: VLC/3.0" --no-check-certificate -O "$TD" "$EPG_URL" 2>/dev/null && [ -s "$TD" ] && {
+                        M=$(hexdump -n 2 -e '2/1 "%02x"' "$TD" 2>/dev/null)
+                        if [ "$M" = "1f8b" ]; then
+                            cp "$TD" "$EPG_GZ"
+                        else
+                            gzip -c "$TD" > "$EPG_GZ" 2>/dev/null
+                        fi
+                        rm -f "$TD"
+                        _epg_ok=true
+                    }
+                    _epg_trials=$((_epg_trials + 1))
+                    [ "$_epg_ok" = "false" ] && sleep 5
+                done
+                if [ "$_epg_ok" = "true" ]; then
                     if [ -f "$EPG_GZ" ] && [ -s "$EPG_GZ" ]; then
                         SZ=$(wc -c < "$EPG_GZ")
                         SZKB=$((SZ / 1024))
                         SZMB=$((SZ / 1048576))
                         if [ "$SZMB" -gt 10 ] 2>/dev/null; then
-                            printf '{"status":"ok","message":"EPG обновлён! Размер gz: %s MB. Внимание: >10MB","large":true}' "$SZMB"
+                            printf '{"status":"ok","message":"EPG обновлён! Размер gz: %s MB. Внимание: >10MB","large":true,"trials":%d}' "$SZMB" "$_epg_trials"
                         else
-                            printf '{"status":"ok","message":"EPG обновлён! Размер gz: %s KB","large":false}' "$SZKB"
+                            printf '{"status":"ok","message":"EPG обновлён! Размер gz: %s KB","large":false,"trials":%d}' "$SZKB" "$_epg_trials"
                         fi
                     else
                         printf '{"status":"error","message":"Ошибка сохранения EPG"}'
                     fi
-                } || { rm -f "$TD"; printf '{"status":"error","message":"Ошибка загрузки EPG"}'; }
+                else
+                    printf '{"status":"error","message":"Ошибка загрузки EPG после %d попыток","trials":%d}' "$_epg_trials" "$_epg_trials"
+                fi
             else
                 printf '{"status":"error","message":"EPG URL не задан"}'
             fi ;;
@@ -664,6 +725,75 @@ if [ -n "$ACTION" ]; then
             else
                 printf '{"status":"ok","output":"stopped"}'
             fi ;;
+        system_info)
+            _up=$(cat /proc/uptime 2>/dev/null | cut -d. -f1)
+            _d=$((_up / 86400)); _h=$(((_up % 86400) / 3600)); _m=$(((_up % 3600) / 60))
+            _uptxt=""
+            [ "$_d" -gt 0 ] && _uptxt="${_d}д "
+            _uptxt="${_uptxt}${_h}ч ${_m}м"
+            _mem_total=$(awk '/MemTotal/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
+            _mem_free=$(awk '/MemAvailable/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
+            [ -z "$_mem_free" ] && _mem_free=$(awk '/MemFree/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
+            _mem_used=$((_mem_total - _mem_free))
+            _disk_total=$(df / 2>/dev/null | awk 'NR==2{print $2}')
+            _disk_used=$(df / 2>/dev/null | awk 'NR==2{print $3}')
+            _disk_pct=$(df / 2>/dev/null | awk 'NR==2{print $5}')
+            printf '{"status":"ok","uptime":"%s","mem_total":"%sMB","mem_used":"%sMB","disk_total":"%s","disk_used":"%s","disk_pct":"%s"}' \
+                "$_uptxt" "$_mem_total" "$_mem_used" "$_disk_total" "$_disk_used" "$_disk_pct"
+            ;;
+        validate_playlist)
+            VU=$(echo "$POST_DATA" | sed -n 's/.*url=\([^&]*\).*/\1/p')
+            VU=$(echo "$VU" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
+            if [ -n "$VU" ]; then
+                VK=$(wget -q --spider --timeout=10 --no-check-certificate "$VU" 2>/dev/null && echo "ok" || echo "fail")
+                if [ "$VK" = "ok" ]; then
+                    VCH=$(wget -q --timeout=10 --no-check-certificate -O - "$VU" 2>/dev/null | grep -c "^#EXTINF")
+                    printf '{"status":"ok","valid":true,"channels":"%s"}' "$VCH"
+                else
+                    printf '{"status":"ok","valid":false}'
+                fi
+            else
+                printf '{"status":"error","message":"Укажите URL"}'
+            fi ;;
+        merge_playlists)
+            MP=$(echo "$POST_DATA" | sed -n 's/.*urls=\([^&]*\).*/\1/p')
+            MP=$(echo "$MP" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g;s/+/ /g')
+            echo "#EXTM3U" > "$MERGED_PL"
+            _mc=0
+            for _u in $MP; do
+                _u=$(echo "$_u" | sed 's/%2F/\//g;s/%3A/:/g')
+                if wget -q --timeout=15 --no-check-certificate -O /tmp/_ipl.m3u "$_u" 2>/dev/null; then
+                    grep "^#\|^http" /tmp/_ipl.m3u >> "$MERGED_PL" 2>/dev/null
+                fi
+            done
+            _mc=$(grep -c "^#EXTINF" "$MERGED_PL" 2>/dev/null)
+            cp "$MERGED_PL" "$PL" 2>/dev/null
+            cp "$PL" /www/iptv/playlist.m3u 2>/dev/null
+            printf '{"status":"ok","merged_channels":"%s"}' "${_mc:-0}"
+            ;;
+        set_playlist_url2)
+            NU2=$(echo "$POST_DATA" | sed -n 's/.*url=\([^&]*\).*/\1/p')
+            NU2=$(echo "$NU2" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g')
+            [ -n "$NU2" ] && {
+                printf 'PLAYLIST_URL2="%s"\n' "$NU2" >> "$EC"
+                printf '{"status":"ok","message":"Доп. плейлист сохранён"}'
+            } || printf '{"status":"error","message":"Укажите URL"}' ;;
+        set_whitelist)
+            WL=$(echo "$POST_DATA" | sed -n 's/.*ips=\([^&]*\).*/\1/p')
+            WL=$(echo "$WL" | sed 's/%2F/\//g;s/%3A/:/g;s/%3D/=/g;s/%3F/?/g;s/%26/\&/g;s/%2B/+/g;s/%25/%/g;s/+/ /g')
+            if [ -n "$WL" ]; then
+                echo "$WL" | tr ' ' '\n' | grep -v '^$' > "$WHITELIST_FILE"
+                printf '{"status":"ok","message":"Список IP обновлён"}'
+            else
+                > "$WHITELIST_FILE"
+                printf '{"status":"ok","message":"Список IP очищен (все разрешены)"}'
+            fi ;;
+        get_whitelist)
+            if [ -s "$WHITELIST_FILE" ]; then
+                printf '{"status":"ok","ips":"%s"}' "$(cat "$WHITELIST_FILE" | tr '\n' ',' | sed 's/,$//')"
+            else
+                printf '{"status":"ok","ips":""}'
+            fi ;;
     esac
     exit 0
 fi
@@ -710,6 +840,17 @@ hd_count=0
 [ -f "$PL" ] && hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null || true)
 [ -z "$hd_count" ] && hd_count=0
 sd_count=$((${CH:-0} - ${hd_count:-0}))
+# System info
+_upt=$(cat /proc/uptime 2>/dev/null | cut -d. -f1)
+_upt_d=$(((_upt+0) / 86400)); _upt_h=$(((_upt+0) % 86400 / 3600)); _upt_m=$(((_upt+0) % 3600 / 60))
+_uptxt=""; [ "$_upt_d" -gt 0 ] && _uptxt="${_upt_d}д "; _uptxt="${_uptxt}${_upt_h}ч ${_upt_m}м"
+_mem_t=$(awk '/MemTotal/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
+_mem_f=$(awk '/MemAvailable/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
+[ -z "$_mem_f" ] && _mem_f=$(awk '/MemFree/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
+_mem_u=$(((_mem_t+0) - (_mem_f+0)))
+_disk_t=$(df / 2>/dev/null | awk 'NR==2{print $2}')
+_disk_u=$(df / 2>/dev/null | awk 'NR==2{print $3}')
+_disk_p=$(df / 2>/dev/null | awk 'NR==2{print $5}')
 pname="${PLAYLIST_NAME:-$PSZ}"
 psz="$PSZ"
 esz="$ESZ"
@@ -743,7 +884,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;backgrou
 .h h1{font-size:20px;color:var(--primary)}.h p{color:var(--text3);font-size:11px;margin-top:2px}
 .tt{background:var(--input-bg);border:1px solid var(--border);border-radius:20px;padding:6px 14px;cursor:pointer;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;transition:all .2s;user-select:none}
 .tt:hover{border-color:var(--primary)}
-.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:16px}
+.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-bottom:16px}
 .s{background:var(--card);border-radius:8px;padding:12px;text-align:center;border:1px solid var(--border);box-shadow:var(--shadow)}
 .sv{font-size:18px;font-weight:700;color:var(--primary)}.sl{font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px}
 .ub{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px;margin:6px 0;display:flex;align-items:center;gap:6px}
@@ -816,6 +957,9 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="s"><div class="sv">$grp_count</div><div class="sl">Групп</div></div>
 <div class="s"><div class="sv">$hd_count</div><div class="sl">HD</div></div>
 <div class="s"><div class="sv">$sd_count</div><div class="sl">SD</div></div>
+<div class="s"><div class="sv">$_uptxt</div><div class="sl">Аптайм</div></div>
+<div class="s"><div class="sv">${_mem_u}MB</div><div class="sl">RAM</div></div>
+<div class="s"><div class="sv">$_disk_p</div><div class="sl">Диск</div></div>
 </div>
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/playlist.m3u</code><button onclick="cp(this)">Копировать</button></div>
 <div class="ub"><code>http://$LAN_IP:$IPTV_PORT/epg.xml</code><button onclick="cp(this)">Копировать</button></div>
@@ -922,6 +1066,35 @@ $EPGROWS
 <h3>API токен</h3>
 <div class="fg" style="margin-top:6px"><label>Токен</label><input type="text" id="sec-token" placeholder="Пусто = отключить"></div>
 <div class="bg" style="margin-top:8px"><button class="b bs bsm" onclick="saveToken()">Сохранить</button></div>
+</div>
+</div>
+<hr>
+<h3>Белый список IP и лимиты</h3>
+<div class="sg">
+<div class="sc">
+<h3>Белый список IP</h3>
+<div class="fg" style="margin-top:6px"><label>IP адреса (по одному на строку)</label><textarea id="wl-ips" placeholder="192.168.1.100&#10;192.168.1.101"></textarea></div>
+<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="saveWhitelist()">Сохранить</button></div>
+<div class="si">Оставьте пустым — все разрешены</div>
+</div>
+<div class="sc">
+<h3>Rate Limit</h3>
+<div class="si">Максимум запросов: <b id="rl-info">60/мин</b></div>
+<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="act('get_whitelist', ''); toast('Rate limit: 60 запросов/мин','ok')">Проверить</button></div>
+</div>
+</div>
+<hr>
+<h3>Дополнительные плейлисты</h3>
+<div class="sg">
+<div class="sc">
+<h3>Объединить плейлисты</h3>
+<div class="fg" style="margin-top:6px"><label>URL плейлистов (по одному на строку)</label><textarea id="merge-urls" placeholder="http://...&#10;http://..."></textarea></div>
+<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="mergePlaylists()">Объединить</button></div>
+</div>
+<div class="sc">
+<h3>Проверить URL</h3>
+<div class="fg" style="margin-top:6px"><label>URL для проверки</label><input type="url" id="validate-url" placeholder="http://..."></div>
+<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="validatePlaylist()">Проверить</button></div>
 </div>
 </div>
 </div>
@@ -1299,6 +1472,30 @@ function checkUpdate(){
         }catch(e){toast('Ошибка проверки','err')}
     };
     x.send();
+}
+
+function saveWhitelist(){
+    var ips=document.getElementById('wl-ips').value.replace(/\n/g,'+');
+    act('set_whitelist','ips='+encodeURIComponent(ips));
+}
+
+function mergePlaylists(){
+    var urls=document.getElementById('merge-urls').value.trim().replace(/\n/g,'+');
+    if(!urls){toast('Введите URL','err');return}
+    act('merge_playlists','urls='+encodeURIComponent(urls),function(r){
+        if(r.status==='ok')toast('Объединено! Каналов: '+(r.merged_channels||''),'ok');
+        else toast(r.message||'Ошибка','err');
+    });
+}
+
+function validatePlaylist(){
+    var url=document.getElementById('validate-url').value;
+    if(!url){toast('Введите URL','err');return}
+    act('validate_playlist','url='+encodeURIComponent(url),function(r){
+        if(r.status==='ok'&&!r.valid)toast('URL недоступен','err');
+        else if(r.valid)toast('Доступен! Каналов: '+(r.channels||''),'ok');
+        else toast(r.message||'Ошибка','err');
+    });
 }
 
 function escHtml(s){
