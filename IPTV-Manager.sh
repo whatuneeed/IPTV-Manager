@@ -688,11 +688,19 @@ if [ -n "$ACTION" ]; then
         check_update)
             CUR="$IPTV_MANAGER_VERSION"
             LATEST=$(wget -q --timeout=5 -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null | head -10 | grep -o 'IPTV_MANAGER_VERSION="[^"]*"' | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
-            if [ -n "$LATEST" ] && [ "$LATEST" != "$CUR" ]; then
-                wget -q --timeout=30 --no-check-certificate -O "/tmp/IPTV-Manager-new.sh" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null &
-                printf '{"status":"ok","update":true,"current":"%s","latest":"%s","reason":"version"}' "$CUR" "$LATEST"
+            # Download full remote file and compare with local using md5sum
+            REMOTE_FULL=$(wget -q --timeout=30 --no-check-certificate -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null)
+            if [ -n "$REMOTE_FULL" ]; then
+                REMOTE_SUM=$(echo "$REMOTE_FULL" | md5sum | awk '{print $1}')
+                LOCAL_SUM=$(md5sum "$IPTV_DIR/IPTV-Manager.sh" 2>/dev/null | awk '{print $1}')
+                if [ -n "$LOCAL_SUM" ] && [ "$LOCAL_SUM" != "$REMOTE_SUM" ]; then
+                    echo "$REMOTE_FULL" > "/tmp/IPTV-Manager-new.sh" 2>/dev/null
+                    printf '{"status":"ok","update":true,"current":"%s","latest":"%s","reason":"file_changed"}' "$CUR" "${LATEST:-$CUR}"
+                else
+                    printf '{"status":"ok","update":false,"current":"%s","latest":"%s"}' "$CUR" "${LATEST:-$CUR}"
+                fi
             else
-                printf '{"status":"ok","update":false,"current":"%s","latest":"%s"}' "$CUR" "$LATEST"
+                printf '{"status":"ok","update":false,"current":"%s","latest":"%s"}' "$CUR" "${LATEST:-$CUR}"
             fi ;;
         exec_cmd)
             CMD=$(echo "$POST_DATA" | sed -n 's/.*cmd=\([^&]*\).*/\1/p')
