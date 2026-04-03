@@ -1,93 +1,111 @@
 'use strict';
 'require view';
-'require rpc';
 
 var C = '/etc/iptv/IPTV-Manager.sh';
-
-var callExec = rpc.declare({
-    object: 'file',
-    method: 'exec',
-    params: ['command', 'params'],
-    expect: {}
-});
-
-// If the iframe loads fine, it will override this page's content
-// with the real server.html interface from port 8082.
-// If the iframe fails (server stopped), it will show this fallback UI.
-var frameHtml = '<!DOCTYPE html><html><head><style>body{margin:0;padding:0;font-family:-apple-system,sans-serif;background:#f0f2f5;color:#1a1a2e;display:flex;align-items:center;justify-content:center;min-height:100vh}.c{background:#fff;border-radius:12px;padding:32px;border:1px solid #e0e0e0;box-shadow:0 1px 3px rgba(0,0,0,.06);text-align:center;max-width:360px;width:90%}.b{padding:12px 24px;background:#1e8e3e;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer}.b:hover{background:#137333}.b:disabled{opacity:.5;cursor:default}.s{font-size:14px;color:#888;margin:16px 0}.l{font-size:11px;color:#888;margin-top:12px}</style></head><body><div class="c"><div class="s" id="s">Сервер остановлен</div><button class="b" id="go" onclick="parent.startServer()">Запустить</button><p class="l">Нажмите чтобы запустить IPTV Manager</p></div></body></html>';
+var LAN_IP = '192.168.1.1';
+var PORT = '8082';
 
 return view.extend({
     load: function() {
-        return callExec({
-            command: '/bin/sh',
-            params: ['-c', C + ' status']
-        }).then(function(r) {
-            var o = ((r && r.stdout) || '').trim();
-            return o.indexOf('running') > -1;
-        }).catch(function() {
-            return false;
-        });
+        return Promise.resolve();
     },
 
-    render: function(isRunning) {
+    render: function() {
         var self = this;
-        var lanIp = '192.168.1.1';
-        var port = '8082';
-        var frameSrc = 'http://' + lanIp + ':' + port + '/server.html';
+        var frame = E('iframe', {
+            src: 'http://' + LAN_IP + ':' + PORT + '/server.html',
+            style: 'width:100%;height:calc(100vh - 140px);border:none;background:#1a1b26'
+        });
 
-        // Only show iframe if server IS running, otherwise show fallback
-        var frameEl;
-        var fallbackEl;
-
-        fallbackEl = E('div', {style: 'padding:20px;text-align:center'}, [
-            E('p', {style: 'color:#888;font-size:14px;margin-bottom:12px'}, isRunning ? 'Загрузка...' : 'Сервер остановлен'),
+        var fallback = E('div', {
+            style: 'display:none;padding:40px;text-align:center'
+        }, [
+            E('p', {style: 'color:#666;font-size:14px;margin-bottom:16px'}, 'Сервер остановлен'),
             E('button', {
                 class: 'cbi-button cbi-button-add',
-                style: 'padding:8px 20px;font-size:14px',
-                click: function() {
-                    this.disabled = true;
-                    this.textContent = 'Запуск...';
-                    fallbackEl.querySelector('p').textContent = 'Запуск сервера...';
-                    callExec({
-                        command: '/bin/sh',
-                        params: ['-c', C + ' start']
-                    }).then(function() {
-                        fallbackEl.querySelector('p').textContent = 'Запущен! Перезагрузка...';
-                        setTimeout(function() {
-                            frameEl.style.display = '';
-                            fallbackEl.style.display = 'none';
-                            frameEl.src = frameSrc;
-                        }, 8000);
-                    }).catch(function() {
-                        fallbackEl.querySelector('p').textContent = 'Ошибка запуска';
-                        this.disabled = false;
-                        this.textContent = 'Запустить';
-                    });
-                }
+                style: 'padding:10px 24px;font-size:14px'
             }, 'Запустить')
         ]);
 
-        frameEl = E('iframe', {
-            src: isRunning ? frameSrc : '',
-            style: 'width:100%;height:calc(100vh - 140px);border:none;' + (isRunning ? '' : 'display:none')
+        fallback.querySelector('button').onclick = function() {
+            this.disabled = true;
+            this.textContent = 'Запуск...';
+            fallback.querySelector('p').textContent = 'Запуск сервера...';
+
+            // Try to start via ubus file.exec
+            L.ubus.call('file', 'exec', {
+                command: '/bin/sh',
+                params: ['-c', C + ' start']
+            }).then(function() {
+                fallback.querySelector('p').textContent = 'Сервер запущен! Загрузка...';
+                // Wait for server to come up
+                self.waitForServer();
+            }).catch(function() {
+                fallback.querySelector('p').textContent = 'Ошибка запуска';
+                self.disabled = false;
+                self.textContent = 'Запустить';
+            });
+        };
+
+        // Check if server is actually running - if not, show fallback
+        this.checkServerRunning(function(running) {
+            if (running) {
+                frame.style.display = '';
+                fallback.style.display = 'none';
+            } else {
+                frame.style.display = 'none';
+                fallback.style.display = '';
+            }
         });
 
-        if (isRunning) {
-            fallbackEl.style.display = 'none';
-            frameEl.style.display = '';
-        } else {
-            fallbackEl.style.display = '';
-            frameEl.style.display = 'none';
-            fallbackEl.querySelector('p').textContent = 'Сервер остановлен';
-            fallbackEl.querySelector('button').textContent = 'Запустить';
-            fallbackEl.querySelector('button').disabled = false;
-        }
+        // Fallback: if iframe fails to load after 3s, show fallback UI
+        var timer = setTimeout(function() {
+            frame.style.display = 'none';
+            fallback.style.display = '';
+        }, 3000);
+
+        // If iframe loads, cancel fallback
+        frame.onload = function() {
+            clearTimeout(timer);
+            frame.style.display = '';
+            fallback.style.display = 'none';
+        };
 
         return E([
             E('h2', {}, 'Сервер'),
             E('p', {}, 'Управление IPTV сервером'),
-            fallbackEl,
-            frameEl
+            frame,
+            fallback
         ]);
+    },
+
+    // Check if port 8082 responds
+    checkServerRunning: function(cb) {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', 'http://' + LAN_IP + ':' + PORT + '/', true);
+        xhr.timeout = 2000;
+        xhr.onload = function() { cb(true); };
+        xhr.onerror = function() { cb(false); };
+        xhr.ontimeout = function() { cb(false); };
+        xhr.send();
+    },
+
+    waitForServer: function() {
+        var self = this;
+        var attempts = 0;
+        var check = function() {
+            attempts++;
+            self.checkServerRunning(function(running) {
+                if (running) {
+                    location.reload();
+                } else if (attempts < 20) {
+                    setTimeout(check, 1000);
+                } else {
+                    document.querySelector('p').textContent = 'Сервер не запустился. Попробуйте через терминал.';
+                }
+            });
+        };
+        // Start checking after 4s (server takes time to start)
+        setTimeout(check, 4000);
     }
 });
