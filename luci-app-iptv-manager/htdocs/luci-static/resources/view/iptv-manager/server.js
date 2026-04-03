@@ -1,6 +1,7 @@
 'use strict';
 'require view';
-'require rpc';
+'require ui';
+'require ubus';
 
 var CMD = '/etc/iptv/IPTV-Manager.sh';
 var PORT = '8082';
@@ -16,125 +17,83 @@ function isUp(cb) {
     x.send();
 }
 
-var callExec = rpc.declare({
-    object: 'file',
-    method: 'exec',
-    params: ['command', 'params'],
-    expect: {}
-});
-
-function doStart(cb) {
-    callExec({
+function ubusExec(cmd, cb) {
+    var conn = ubus.connect();
+    if (!conn) { cb(false); return; }
+    conn.call('file', 'exec', {
         command: '/bin/sh',
-        params: ['-c', CMD + ' start']
-    }).then(function() {
-        setTimeout(function() { cb(true); }, 8000);
+        params: ['-c', cmd]
+    }).then(function(r) {
+        conn.disconnect();
+        cb(true);
     }).catch(function() {
-        // Try fallback through CGI
-        var x = new XMLHttpRequest();
-        x.open('GET', FULL + '/cgi-bin/admin.cgi?action=server_start', true);
-        x.timeout = 5000;
-        x.onload = function() {
-            setTimeout(function() { cb(true); }, 10000);
-        };
-        x.onerror = x.ontimeout = function() {
-            setTimeout(function() { cb(false); }, 5000);
-        };
-        x.send();
-    });
-}
-
-function doStop(cb) {
-    callExec({
-        command: '/bin/sh',
-        params: ['-c', CMD + ' stop']
-    }).then(function() {
-        setTimeout(function() { cb(true); }, 5000);
-    }).catch(function() {
-        // Try fallback through CGI
-        var x = new XMLHttpRequest();
-        x.open('GET', FULL + '/cgi-bin/admin.cgi?action=server_stop', true);
-        x.timeout = 5000;
-        x.onload = function() {
-            setTimeout(function() { cb(true); }, 5000);
-        };
-        x.onerror = x.ontimeout = function() {
-            setTimeout(function() { cb(true); }, 5000);
-        };
-        x.send();
+        try { conn.disconnect(); } catch(e) {}
+        cb(false);
     });
 }
 
 return view.extend({
-    load: function() { return Promise.resolve(); },
+    load: function() {
+        return new Promise(function(resolve) {
+            isUp(function(running) {
+                resolve(running);
+            });
+        });
+    },
 
-    render: function() {
+    render: function(isRunning) {
+        var self = this;
+
         var box = E('div', {
-            style: 'display:flex;flex-direction:column;align-items:center;gap:14px;padding:30px;background:var(--bg,#1a1b26);color:var(--text,#c0caf5);border-radius:8px;margin-top:10px'
+            style: 'display:flex;flex-direction:column;align-items:center;gap:14px;padding:30px;background:var(--bg,#f0f2f5);color:var(--text,#1a1a2e);border-radius:8px;margin-top:10px;' + (isRunning ? 'display:none' : '')
         });
 
-        var msg = E('div', {style:'font-size:15px;min-height:20px'}, 'Проверка...');
-        var startBtn = E('button', {class:'cbi-button cbi-button-add', style:'padding:10px 24px;font-size:14px'}, 'Запустить сервер');
-        var stopBtn = E('button', {class:'cbi-button cbi-button-negative', style:'padding:10px 24px;font-size:14px;display:none'}, 'Остановить сервер');
+        var msg = E('div', {style:'font-size:15px;min-height:20px'}, isRunning ? '' : 'Сервер остановлен');
+        var goBtn = E('button', {class:'cbi-button cbi-button-add', style:'padding:10px 24px;font-size:14px'}, 'Запустить сервер');
+        var offBtn = E('button', {class:'cbi-button cbi-button-negative', style:'padding:10px 24px;font-size:14px'}, 'Остановить сервер');
 
-        var frame = E('iframe', {
-            src: '', 
-            style: 'width:100%;height:calc(100vh - 200px);border:none;display:none;border-radius:8px'
-        });
-
-        startBtn.onclick = function() {
-            startBtn.disabled = true;
-            startBtn.textContent = 'Запуск...';
+        goBtn.onclick = function() {
+            goBtn.disabled = true;
+            goBtn.textContent = 'Запуск...';
             msg.textContent = 'Запуск сервера...';
-            doStart(function(ok) {
+            ubusExec(CMD + ' start', function(ok) {
                 if (ok) {
-                    msg.textContent = 'Успешно запущен!';
-                    showFrame();
+                    msg.textContent = 'Запущен! Ждём...';
+                    setTimeout(function() { location.reload(); }, 8000);
                 } else {
-                    msg.textContent = 'Ошибка запуска. Попробуйте ещё раз.';
-                    startBtn.disabled = false;
-                    startBtn.textContent = 'Запустить сервер';
+                    msg.textContent = 'Ошибка запуска';
+                    goBtn.disabled = false;
+                    goBtn.textContent = 'Запустить сервер';
                 }
             });
         };
 
-        stopBtn.onclick = function() {
-            stopBtn.disabled = true;
-            stopBtn.textContent = 'Остановка...';
+        offBtn.onclick = function() {
+            offBtn.disabled = true;
+            offBtn.textContent = 'Остановка...';
             msg.textContent = 'Остановка сервера...';
-            doStop(function(ok) {
-                msg.textContent = 'Сервер остановлен';
-                hideFrame();
+            ubusExec(CMD + ' stop', function(ok) {
+                if (ok) {
+                    msg.textContent = 'Сервер остановлен! Перезагрузка...';
+                    setTimeout(function() { location.reload(); }, 4000);
+                } else {
+                    msg.textContent = 'Ошибка остановки';
+                    offBtn.disabled = false;
+                    offBtn.textContent = 'Остановить сервер';
+                }
             });
         };
 
-        function showFrame() {
-            box.style.display = 'none';
-            frame.style.display = 'block';
-            frame.src = FULL + '/server.html';
-        }
-
-        function hideFrame() {
-            frame.style.display = 'none';
-            box.style.display = 'flex';
-            startBtn.style.display = '';
-            startBtn.disabled = false;
-            startBtn.textContent = 'Запустить сервер';
-            stopBtn.style.display = 'none';
-            stopBtn.disabled = false;
-        }
-
-        // Initial check
-        isUp(function(running) {
-            if (running) {
-                showFrame();
-            } else {
-                msg.textContent = 'Сервер остановлен';
-                box.appendChild(msg);
-                box.appendChild(startBtn);
-                box.appendChild(stopBtn);
-            }
+        var frame = E('iframe', {
+            src: isRunning ? FULL + '/server.html' : '',
+            style: 'width:100%;height:calc(100vh - 200px);border:none;' + (isRunning ? '' : 'display:none')
         });
+
+        if (!isRunning) {
+            box.appendChild(msg);
+            box.appendChild(goBtn);
+            box.appendChild(offBtn);
+        }
 
         return E([
             E('h2', {}, 'Сервер'),
