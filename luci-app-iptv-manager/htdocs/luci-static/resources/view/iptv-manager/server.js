@@ -1,28 +1,20 @@
 'use strict';
 'require view';
-'require uci';
 
 return view.extend({
-    load: function() {
-        return Promise.all([
-            uci.load('network').catch(function() { return {}; }),
-            uci.load('iptv').catch(function() { return {}; })
-        ]).then(function(data) {
-            return data[0].get_first('network', 'interface', 'lan', 'ipaddr') || '192.168.1.1';
-        });
-    },
+    load: function() { return Promise.resolve(); },
 
-    render: function(lan_ip) {
+    render: function() {
         var status_el = E('span', { style: 'color:#64748b;font-size:14px' }, 'Загрузка...');
 
         var btn = E('button', {
-            'class': 'cbi-button cbi-button-action important',
-            'style': 'padding:8px 20px;border:none;border-radius:5px;cursor:pointer;font-size:13px;color:#fff;background:#22c55e'
+            class: 'cbi-button cbi-button-action important',
+            style: 'padding:8px 20px;border:none;border-radius:5px;cursor:pointer;font-size:13px;color:#fff;background:#22c55e'
         }, '▶ Запустить');
 
         var row = E('div', {
-            'class': 'cbi-section',
-            'style': 'display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:14px;border-radius:8px;margin-top:8px'
+            class: 'cbi-section',
+            style: 'display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:14px;border-radius:8px;margin-top:8px'
         }, [btn, status_el]);
 
         function check() {

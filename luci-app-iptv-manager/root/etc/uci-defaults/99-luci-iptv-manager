@@ -6,4 +6,14 @@ uci commit iptv
 # Set ACL permissions
 chmod 644 /usr/share/rpcd/acl.d/luci-app-iptv-manager.json 2>/dev/null
 
+# Copy srv.cgi to /www/cgi-bin/ so LuCI server tab can access it
+if [ -f /www/luci-static/resources/view/iptv-manager/srv.cgi ]; then
+    mkdir -p /www/cgi-bin
+    cp /www/luci-static/resources/view/iptv-manager/srv.cgi /www/cgi-bin/srv.cgi
+    chmod 755 /www/cgi-bin/srv.cgi
+fi
+if [ -f /www/luci-static/resources/view/iptv-manager/srv.html ]; then
+    cp /www/luci-static/resources/view/iptv-manager/srv.html /www/cgi-bin/srv.html
+fi
+
 exit 0
