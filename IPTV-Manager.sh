@@ -1127,25 +1127,25 @@ $EPG_NOTICE
 </div>
 </div>
 <hr>
-<h3>Обновление</h3>
+<h3>Проверка обновлений</h3>
+<div id="up-info" style="font-size:11px;color:var(--text3);margin-bottom:8px"></div>
+<div class="bg"><button class="b bsm bo" onclick="checkUpdate()">🔄 Проверить обновления</button></div>
+<hr>
+<h3>Обновление с GitHub</h3>
 <div class="sg">
 <div class="sc">
 <h3>Обновить с сохранением</h3>
-<div class="si">Скачивает последнюю версию, сохраняя плейлист, EPG, настройки и тему</div>
-<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="doUpdateKeep()">📦 Обновить (сохранить)</button></div>
+<div class="si">Скачивает последнюю версию, сохраняя плейлист, EPG и настройки</div>
+<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="doUpdateKeep()">📦 Обновить</button></div>
 </div>
 <div class="sc">
-<h3>Обновить начисто</h3>
-<div class="si">Полная переустановка — настройки, плейлист и EPG будут сброшены</div>
-<div class="bg" style="margin-top:8px"><button class="b bd bsm" onclick="doUpdateClean()">🗑️ Обновить (начисто)</button></div>
+<h3>Сброс к заводским</h3>
+<div class="si">Полный сброс — удаляет настройки и запускает первоначальную настройку заново</div>
+<div class="bg" style="margin-top:8px"><button class="b bd bsm" onclick="doUpdateClean()">🗑️ Сбросить</button></div>
 </div>
 </div>
-<div id="up-info" style="font-size:11px;color:var(--text3);margin-top:4px"></div>
 <hr>
-<h3>Проверка версий</h3>
-<div class="bg"><button class="b bsm bo" onclick="checkUpdate()">🔄 Проверить обновления</button></div>
-<hr>
-<h3>Безопасность</h3>
+<h3>Белый список IP и лимиты</h3>
 <div class="sg">
 <div class="sc">
 <h3>Пароль на админку</h3>
@@ -1560,9 +1560,12 @@ function checkUpdate(){
         try{
             var r=JSON.parse(x.responseText);
             var info=document.getElementById('up-info');
-            if(info)info.textContent='Установлено: v'+r.current+', доступно: v'+(r.latest||'—');
+            if(info){
+                info.textContent='Установлено: v'+r.current+', доступно: v'+(r.latest||'—');
+                if(r.update)info.style.color='var(--success)';
+            }
             if(r.status==='ok'){
-                if(r.update)toast('Доступна v'+r.latest+'! Текущая: v'+r.current,'ok');
+                if(r.update)toast('Доступна v'+r.latest+'!','ok');
                 else toast('У вас последняя версия v'+r.current,'ok');
             }
         }catch(e){toast('Ошибка проверки','err')}
@@ -1570,29 +1573,44 @@ function checkUpdate(){
     x.send();
 }
 function doUpdateKeep(){
+    var info=document.getElementById('up-info');
+    if(info)info.textContent='Проверка и обновление...';
     var x=new XMLHttpRequest();
-    x.open('GET',API+'?action=auto_update_keep',true);
-    x.timeout=60000;
+    x.open('GET',API+'?action=check_update',true);
     x.onload=function(){
         try{
             var r=JSON.parse(x.responseText);
-            if(r.status==='ok'){toast('Обновление запущено! Страница перезагрузится...','ok');setTimeout(function(){location.reload()},3000)}
-            else toast(r.message||'Ошибка','err');
-        }catch(e){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)}
+            if(r.status==='ok'&&r.update){
+                // Download then update
+                var y=new XMLHttpRequest();
+                y.open('GET',API+'?action=auto_update_keep',true);
+                y.timeout=60000;
+                y.onload=function(){
+                    toast('Обновление запущено! Страница перезагрузится...','ok');
+                    setTimeout(function(){location.reload()},5000);
+                };
+                y.onerror=y.ontimeout=function(){
+                    toast('Запущено! Подождите...','ok');
+                    setTimeout(function(){location.reload()},5000);
+                };
+                y.send();
+            }else{
+                toast('У вас последняя версия v'+(r.current||''),'ok');
+                if(info)info.textContent='Установлено: v'+r.current+', доступно: '+(r.latest||'—')+' (нет обновлений)';
+            }
+        }catch(e){toast('Ошибка','err')}
     };
-    x.onerror=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)};
-    x.ontimeout=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)};
     x.send();
 }
 function doUpdateClean(){
-    if(!confirm('Удалить все настройки и обновить начисто?'))return;
+    if(!confirm('Сбросить все настройки к заводским?'))return;
     var x=new XMLHttpRequest();
     x.open('GET',API+'?action=auto_update_clean',true);
     x.timeout=60000;
     x.onload=function(){
         try{
             var r=JSON.parse(x.responseText);
-            if(r.status==='ok'){toast('Обновление запущено!','ok');setTimeout(function(){location.reload()},3000)}
+            if(r.status==='ok'){toast('Сброс запущен!','ok');setTimeout(function(){location.reload()},5000)}
             else toast(r.message||'Ошибка','err');
         }catch(e){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)}
     };
