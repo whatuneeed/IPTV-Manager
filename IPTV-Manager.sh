@@ -728,6 +728,21 @@ if [ -n "$ACTION" ]; then
             _uptxt=""
             [ "$_d" -gt 0 ] && _uptxt="${_d}д "
             _uptxt="${_uptxt}${_h}ч ${_m}м"
+            # IPTV server uptime
+            _iu="--"
+            if [ -f /tmp/iptv-started ]; then
+                _sn=$(cat /tmp/iptv-started 2>/dev/null)
+                if [ -n "$_sn" ]; then
+                    _now=$(date +%s)
+                    _diff=$((_now - _sn))
+                    if [ "$_diff" -gt 0 ] 2>/dev/null; then
+                        _id=$((_diff / 86400)); _ih=$(((_diff % 86400) / 3600)); _im=$(((_diff % 3600) / 60))
+                        _iu=""
+                        [ "$_id" -gt 0 ] && _iu="${_id}д "
+                        _iu="${_iu}${_ih}ч ${_im}м"
+                    fi
+                fi
+            fi
             _mem_total=$(awk '/MemTotal/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
             _mem_free=$(awk '/MemAvailable/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
             [ -z "$_mem_free" ] && _mem_free=$(awk '/MemFree/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null)
@@ -837,7 +852,7 @@ hd_count=0
 [ -f "$PL" ] && hd_count=$(grep -ci "hd\|1080\|4k\|2160\|uhd" "$PL" 2>/dev/null || true)
 [ -z "$hd_count" ] && hd_count=0
 sd_count=$((${CH:-0} - ${hd_count:-0}))
-# System info — IPTV Manager resource usage only
+# IPTV Manager resource usage only
 _iptv_ram=0
 [ -f "$PL" ] && _iptv_ram=$((_iptv_ram + $(wc -c < "$PL" 2>/dev/null || echo 0)))
 [ -f "$EPG_GZ" ] && _iptv_ram=$((_iptv_ram + $(wc -c < "$EPG_GZ" 2>/dev/null || echo 0)))
@@ -852,6 +867,19 @@ _iptv_disk=0
 [ -f "$EPG_GZ" ] && _iptv_disk=$((_iptv_disk + $(du -sb "$EPG_GZ" 2>/dev/null | cut -f1 || echo 0)))
 _iptv_dkB=$((_iptv_disk / 1024))
 [ "$_iptv_dkB" -lt 1024 ] && _iptv_dt="${_iptv_dkB}KB" || _iptv_dt="$((_iptv_dkB / 1024))MB"
+# IPTV Server uptime
+_iptv_uptime="--"
+if [ -f "$STARTUP_TIME" ]; then
+    _now=$(date +%s)
+    _start=$(cat "$STARTUP_TIME" 2>/dev/null)
+    if [ -n "$_start" ] && [ "$_start" -lt "$_now" ] 2>/dev/null; then
+        _diff=$((_now - _start))
+        _iu_d=$((_diff / 86400)); _iu_h=$(((_diff % 86400) / 3600)); _iu_m=$(((_diff % 3600) / 60))
+        _iptv_uptime=""
+        [ "$_iu_d" -gt 0 ] && _iptv_uptime="${_iu_d}д "
+        _iptv_uptime="${_iptv_uptime}${_iu_h}ч ${_iu_m}м"
+    fi
+fi
 pname="${PLAYLIST_NAME:-$PSZ}"
 psz="$PSZ"
 esz="$ESZ"
@@ -950,7 +978,7 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 </head>
 <body>
 <div class="c">
-<div class="h"><div><h1>IPTV Manager</h1><p>OpenWrt v$IPTV_MANAGER_VERSION</p></div><button class="tt" id="ttb" onclick="toggleTheme()">🌙 Тема</button></div>
+<div class="h"><div><h1>IPTV Manager</h1><p>OpenWrt v$IPTV_MANAGER_VERSION</p></div><button class="tt" id="ttb" onclick="toggleTheme()"></button></div>
 <div class="st">
 <div class="s"><div class="sv">$CH</div><div class="sl">Каналов</div></div>
 <div class="s"><div class="sv">${pname:-$PSZ}</div><div class="sl">Плейлист</div></div>
@@ -958,7 +986,8 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 <div class="s"><div class="sv">$grp_count</div><div class="sl">Групп</div></div>
 <div class="s"><div class="sv">$hd_count</div><div class="sl">HD</div></div>
 <div class="s"><div class="sv">$sd_count</div><div class="sl">SD</div></div>
-<div class="s"><div class="sv">$_uptxt</div><div class="sl">Аптайм</div></div>
+<div class="s"><div class="sv">$_iptv_uptime</div><div class="sl">Сервер</div></div>
+<div class="s"><div class="sv">$_uptxt</div><div class="sl">Система</div></div>
 <div class="s"><div class="sv">$_iptv_rt</div><div class="sl">RAM*</div></div>
 <div class="s"><div class="sv">$_iptv_dt</div><div class="sl">Диск*</div></div>
 </div>
@@ -1132,19 +1161,24 @@ function toggleTheme(){
     var n=c==='light'?'dark':c==='dark'?'openwrt':'light';
     d.setAttribute('data-theme',n);
     var b=document.getElementById('ttb');
-    if(b)b.innerHTML=n==='light'?'🌙 Тема':n==='dark'?'🟣 Тема':'☀️ Тема';
+    var labels={light:'Light',dark:'Dark',openwrt:'OpenWrt'};
+    var icons={light:'\u2600\uFE0F',dark:'\u{1F319}',openwrt:'\u{1F7E3}'};
+    if(b)b.innerHTML=icons[n]+' '+labels[n];
     try{localStorage.setItem('iptv-theme',n)}catch(e){}
 }
 (function(){
     try{
         var t=localStorage.getItem('iptv-theme');
-        if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');document.getElementById('ttb').innerHTML='🟣 Тема'}
-        else if(t==='openwrt'){document.documentElement.setAttribute('data-theme','openwrt');document.getElementById('ttb').innerHTML='☀️ Тема'}
+        var labels={light:'Light',dark:'Dark',openwrt:'OpenWrt'};
+        var icons={light:'\u2600\uFE0F',dark:'\u{1F319}',openwrt:'\u{1F7E3}'};
+        if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');var b=document.getElementById('ttb');if(b)b.innerHTML=icons.dark+' '+labels.dark}
+        else if(t==='openwrt'){document.documentElement.setAttribute('data-theme','openwrt');var b=document.getElementById('ttb');if(b)b.innerHTML=icons.openwrt+' '+labels.openwrt}
+        else{var b=document.getElementById('ttb');if(b)b.innerHTML=icons.light+' '+labels.light}
     }catch(e){}
     if(window.parent!==window){
         document.documentElement.setAttribute('data-theme','openwrt');
         var b=document.getElementById('ttb');
-        if(b)b.innerHTML='☀️ Тема';
+        if(b)b.innerHTML='\u{1F7E3} OpenWrt';
     }
 })();
 
@@ -2068,6 +2102,8 @@ start_http_server() {
     fi
     kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
     sleep 1
+    # Record server start time for uptime tracking
+    date +%s > "$STARTUP_TIME"
     uhttpd -f -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &
     echo $! > "$HTTPD_PID"
     echo_success "Сервер запущен!"
