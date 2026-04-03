@@ -992,7 +992,12 @@ $EPG_NOTICE
 <div class="bg"><button class="b bp" onclick="setEpgUrl()">Применить</button><button class="b bs" onclick="act('refresh_epg','');setTimeout(loadEpgTable,1000)">Обновить</button></div>
 <hr>
 <h3>Передачи <button class="b bsm bo" onclick="loadEpgTable()">🔄 Обновить</button></h3>
-$EPGROWS
+<div style="overflow-x:auto">
+<table class="epg-t">
+<thead><tr><th>Время</th><th>Канал</th><th>Передача</th></tr></thead>
+<tbody id="epg-tb">$EPGROWS</tbody>
+</table>
+</div>
 </div>
 <div class="pn" id="p-settings">
 <h2>Настройки</h2>
