@@ -804,7 +804,7 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"ok","output":"stopped"}'
             fi ;;
         auto_update_keep)
-            printf '{"status":"ok","message":"Скачивание обновления..."}'
+            printf 'Content-Type: application/json\r\n\r\n{"status":"ok","message":"Скачивание обновления..."}'
             (
                 sleep 1
                 TMPN="/tmp/IPTV-Manager-new.sh"
@@ -830,13 +830,15 @@ if [ -n "$ACTION" ]; then
                     [ -f /tmp/_save_fav.json ] && cp /tmp/_save_fav.json /etc/iptv/favorites.json
                     [ -f /tmp/_save_pl.m3u ] && cp /tmp/_save_pl.m3u /etc/iptv/playlist.m3u
                     rm -f /tmp/_save_*
-                    # Start fresh
-                    /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
                 fi
-            ) &
+                # Start fresh (nohup so it survives parent exiting)
+                nohup /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
+            ) </dev/null >/dev/null 2>&1 &
+            sleep 1
+            exit 0
             ;;
         factory_reset)
-            printf '{"status":"ok","message":"Сброс к заводским..."}'
+            printf 'Content-Type: application/json\r\n\r\n{"status":"ok","message":"Сброс к заводским..."}'
             (
                 sleep 2
                 kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
@@ -850,9 +852,12 @@ if [ -n "$ACTION" ]; then
                     cp "$TMPN" /etc/iptv/IPTV-Manager.sh
                     chmod +x /etc/iptv/IPTV-Manager.sh
                     rm -f "$TMPN"
+                    # Start fresh (nohup so it survives parent exiting)
+                    nohup /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
                 fi
-                /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
-            ) &
+            ) </dev/null >/dev/null 2>&1 &
+            sleep 1
+            exit 0
             ;;
     esac
     exit 0
