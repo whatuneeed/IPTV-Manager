@@ -1562,7 +1562,16 @@ function checkUpdate(){
             var info=document.getElementById('up-info');
             if(info){
                 info.textContent='Установлено: v'+r.current+', доступно: v'+(r.latest||'—');
-
+                if(r.update)info.style.color='var(--success)';
+            }
+            if(r.status==='ok'){
+                if(r.update)toast('Доступно обновление v'+r.latest+'!','ok');
+                else toast('У вас последняя версия v'+r.current,'ok');
+            }
+        }catch(e){toast('Ошибка проверки','err')}
+    };
+    x.send();
+}
 function doUpdateKeep(){
     var info=document.getElementById('up-info');
     if(info)info.textContent='Проверка и обновление...';
