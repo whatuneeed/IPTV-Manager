@@ -212,7 +212,14 @@ ACT=$(echo "$QUERY_STRING" | sed -n 's/.*action=\([^&]*\).*/\1/p')
 case "$ACTION$ACT" in
     *start*)
         JSON
-        (sleep 1; kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 1; mkdir -p /www/iptv/cgi-bin; [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null; nohup uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &) &
+        # Kill existing, then start via main script (most reliable)
+        kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+        rm -f /var/run/iptv-httpd.pid 2>/dev/null
+        sleep 1
+        mkdir -p /www/iptv /www/iptv/cgi-bin
+        [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null
+        # Use main script's start to generate CGI and launch
+        /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
         printf '{"ok":true}'
         ;;
     *stop*)
