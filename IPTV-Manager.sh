@@ -1,4 +1,4 @@
-#!/bin/sh
+﻿#!/bin/sh
 # Strip CR from CRLF lines (fix for GitHub downloads on Windows)
 SELF="$0"
 [ -f "$SELF" ] && sed -i 's/\r$//' "$SELF" 2>/dev/null
@@ -117,7 +117,7 @@ save_config() { printf 'PLAYLIST_TYPE="%s"\nPLAYLIST_URL="%s"\nPLAYLIST_SOURCE="
 load_config() { [ -f "$CONFIG_FILE" ] && . "$CONFIG_FILE"; }
 load_epg() { [ -f "$EPG_CONFIG" ] && . "$EPG_CONFIG"; }
 load_sched() {
-    if [ -f "$SCHEDULE_FILE" ]; then . "$SCHEDULE_FILE"; else PLAYLIST_INTERVAL="0"; EPG_INTERVAL="0"; PLAYLIST_LAST_UPDATE=""; EPG_LAST_UPDATE=""; fi
+    if [ -f "$SCHEDULE_FILE" ]; then . "$SCHEDULE_FILE"; fi; [ -z "$PLAYLIST_INTERVAL" ] && PLAYLIST_INTERVAL="0"; [ -z "$EPG_INTERVAL" ] && EPG_INTERVAL="0"; [ -z "$PLAYLIST_LAST_UPDATE" ] && PLAYLIST_LAST_UPDATE="--"; [ -z "$EPG_LAST_UPDATE" ] && EPG_LAST_UPDATE="--"
 }
 save_sched() { printf 'PLAYLIST_INTERVAL="%s"\nEPG_INTERVAL="%s"\nPLAYLIST_LAST_UPDATE="%s"\nEPG_LAST_UPDATE="%s"\n' "$1" "$2" "$3" "$4" > "$SCHEDULE_FILE"; }
 get_ch() {
@@ -2229,6 +2229,7 @@ stop_scheduler() { kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/nu
 # ==========================================
 start_http_server() {
     mkdir -p /www/iptv/cgi-bin
+    ln -sf /etc/iptv/IPTV-Manager.sh /usr/bin/iptv 2>/dev/null
     cp "$IPTV_DIR/server.html" /www/iptv/server.html 2>/dev/null || true
     [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
     generate_cgi
@@ -3000,7 +3001,7 @@ setup_password() {
     print_header
     . "$SECURITY_FILE" 2>/dev/null
     echo -e "${YELLOW}── 🔑 Пароль на админку ────────────────${NC}"
-    echo -e "  Текущий: ${CYAN}${ADMIN_USER:—}${NC} / ${CYAN}${ADMIN_PASS:+****}${NC}"
+    echo -e "  Текущий: ${CYAN}${ADMIN_USER:--}${NC} / ${CYAN}${ADMIN_PASS:+****}${NC}"
     echo ""
     echo -ne "${YELLOW}Логин (пусто=отключить): ${NC}"
     read u </dev/tty
@@ -3020,7 +3021,7 @@ setup_api_token() {
     print_header
     . "$SECURITY_FILE" 2>/dev/null
     echo -e "${YELLOW}── 🎫 API токен ─────────────────────${NC}"
-    echo -e "  Текущий: ${CYAN}${API_TOKEN:—}${NC}"
+    echo -e "  Текущий: ${CYAN}${API_TOKEN:--}${NC}"
     echo ""
     echo -ne "${YELLOW}Токен (пусто=отключить): ${NC}"
     read t </dev/tty
@@ -3247,7 +3248,7 @@ menu_playlist() {
     print_header
     load_config
     echo -e "${YELLOW}── 📡 Плейлист ──────────────────────────${NC}"
-    echo -e "  Название: ${CYAN}${PLAYLIST_NAME:—}${NC}"
+    echo -e "  Название: ${CYAN}${PLAYLIST_NAME:--}${NC}"
     echo -e "  Каналов: ${GREEN}$(get_ch)${NC}"
     echo ""
     echo -e "${CYAN} 1) Загрузить по ссылке${NC}"
@@ -3272,7 +3273,7 @@ menu_epg() {
     print_header
     load_epg
     echo -e "${YELLOW}── 📺 Телепрограмма (EPG) ───────────────${NC}"
-    echo -e "  URL: ${CYAN}${EPG_URL:—}${NC}"
+    echo -e "  URL: ${CYAN}${EPG_URL:--}${NC}"
     echo ""
     echo_color "✅ Готово! IPTV Manager настроен."
     echo ""
@@ -3318,7 +3319,7 @@ menu_schedule() {
     print_header
     load_sched
     echo -e "${YELLOW}── ⏰ Расписание ───────────────────────${NC}"
-    echo -e "  Плейлист: ${CYAN}$(int_text $PLAYLIST_INTERVAL)${NC}   (обновлён: ${CYAN}${PLAYLIST_LAST_UPDATE:—}${NC})"
+    echo -e "  Плейлист: ${CYAN}$(int_text $PLAYLIST_INTERVAL)${NC}   (обновлён: ${CYAN}${PLAYLIST_LAST_UPDATE:--}${NC})"
     echo -e "  EPG: ${CYAN}$(int_text $EPG_INTERVAL)${NC}"
     echo ""
     echo -e "${CYAN} 1) ⏱️  Каждый час${NC}"
