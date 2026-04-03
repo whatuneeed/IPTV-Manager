@@ -800,12 +800,41 @@ if [ -n "$ACTION" ]; then
                 > "$WHITELIST_FILE"
                 printf '{"status":"ok","message":"Список IP очищен (все разрешены)"}'
             fi ;;
-        get_whitelist)
-            if [ -s "$WHITELIST_FILE" ]; then
-                printf '{"status":"ok","ips":"%s"}' "$(cat "$WHITELIST_FILE" | tr '\n' ',' | sed 's/,$//')"
+        server_status)
+            if [ -f /var/run/iptv-httpd.pid ] && kill -0 "$(cat /var/run/iptv-httpd.pid 2>/dev/null)" 2>/dev/null; then
+                printf '{"status":"ok","output":"running"}'
             else
-                printf '{"status":"ok","ips":""}'
+                printf '{"status":"ok","output":"stopped"}'
             fi ;;
+        auto_update_keep)
+            TMPN="/tmp/IPTV-Manager-new.sh"
+            if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
+                kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+                sleep 1
+                cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
+                chmod +x "$IPTV_DIR/IPTV-Manager.sh"
+                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
+                printf '{"status":"ok","message":"Обновлено с сохранением настроек"}'
+            else
+                printf '{"status":"error","message":"Не удалось скачать обновление"}'
+            fi
+            rm -f "$TMPN"
+            ;;
+        auto_update_clean)
+            TMPN="/tmp/IPTV-Manager-new.sh"
+            if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
+                kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+                sleep 1
+                rm -f "$IPTV_DIR"/*.conf "$IPTV_DIR"/*.json "$IPTV_DIR"/*.m3u
+                cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
+                chmod +x "$IPTV_DIR/IPTV-Manager.sh"
+                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
+                printf '{"status":"ok","message":"Обновлено начисто"}'
+            else
+                printf '{"status":"error","message":"Не удалось скачать обновление"}'
+            fi
+            rm -f "$TMPN"
+            ;;
     esac
     exit 0
 fi
@@ -978,7 +1007,7 @@ hr{border:none;border-top:1px solid var(--border);margin:12px 0}
 </head>
 <body>
 <div class="c">
-<div class="h"><div><h1>IPTV Manager</h1><p>OpenWrt v$IPTV_MANAGER_VERSION</p></div><button class="tt" id="ttb" onclick="toggleTheme()"></button></div>
+<div class="h"><div><h1>IPTV Manager</h1><p>OpenWrt v$IPTV_MANAGER_VERSION</p></div><button class="tt" id="ttb" onclick="toggleTheme()">☀️ Light</button></div>
 <div class="st">
 <div class="s"><div class="sv">$CH</div><div class="sl">Каналов</div></div>
 <div class="s"><div class="sv">${pname:-$PSZ}</div><div class="sl">Плейлист</div></div>
@@ -1088,7 +1117,22 @@ $EPG_NOTICE
 </div>
 <hr>
 <h3>Обновление</h3>
-<div class="bg"><button class="b bp bsm" onclick="checkUpdate()">🔄 Проверить обновления</button></div>
+<div class="sg">
+<div class="sc">
+<h3>Обновить с сохранением</h3>
+<div class="si">Скачивает последнюю версию, сохраняя плейлист, EPG, настройки и тему</div>
+<div class="bg" style="margin-top:8px"><button class="b bp bsm" onclick="doUpdateKeep()">📦 Обновить (сохранить)</button></div>
+</div>
+<div class="sc">
+<h3>Обновить начисто</h3>
+<div class="si">Полная переустановка — настройки, плейлист и EPG будут сброшены</div>
+<div class="bg" style="margin-top:8px"><button class="b bd bsm" onclick="doUpdateClean()">🗑️ Обновить (начисто)</button></div>
+</div>
+</div>
+<div id="up-info" style="font-size:11px;color:var(--text3);margin-top:4px"></div>
+<hr>
+<h3>Проверка версий</h3>
+<div class="bg"><button class="b bsm bo" onclick="checkUpdate()">🔄 Проверить обновления</button></div>
 <hr>
 <h3>Безопасность</h3>
 <div class="sg">
@@ -1161,24 +1205,25 @@ function toggleTheme(){
     var n=c==='light'?'dark':c==='dark'?'openwrt':'light';
     d.setAttribute('data-theme',n);
     var b=document.getElementById('ttb');
-    var labels={light:'Light',dark:'Dark',openwrt:'OpenWrt'};
-    var icons={light:'\u2600\uFE0F',dark:'\u{1F319}',openwrt:'\u{1F7E3}'};
-    if(b)b.innerHTML=icons[n]+' '+labels[n];
+    if(b){
+        if(n==='light')b.innerHTML='☀️ Light';
+        else if(n==='dark')b.innerHTML='🌙 Dark';
+        else b.innerHTML='🟣 OpenWrt';
+    }
     try{localStorage.setItem('iptv-theme',n)}catch(e){}
 }
 (function(){
     try{
         var t=localStorage.getItem('iptv-theme');
-        var labels={light:'Light',dark:'Dark',openwrt:'OpenWrt'};
-        var icons={light:'\u2600\uFE0F',dark:'\u{1F319}',openwrt:'\u{1F7E3}'};
-        if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');var b=document.getElementById('ttb');if(b)b.innerHTML=icons.dark+' '+labels.dark}
-        else if(t==='openwrt'){document.documentElement.setAttribute('data-theme','openwrt');var b=document.getElementById('ttb');if(b)b.innerHTML=icons.openwrt+' '+labels.openwrt}
-        else{var b=document.getElementById('ttb');if(b)b.innerHTML=icons.light+' '+labels.light}
+        var b=document.getElementById('ttb');
+        if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');if(b)b.innerHTML='🌙 Dark'}
+        else if(t==='openwrt'){document.documentElement.setAttribute('data-theme','openwrt');if(b)b.innerHTML='🟣 OpenWrt'}
+        else if(b)b.innerHTML='☀️ Light';
     }catch(e){}
     if(window.parent!==window){
         document.documentElement.setAttribute('data-theme','openwrt');
         var b=document.getElementById('ttb');
-        if(b)b.innerHTML='\u{1F7E3} OpenWrt';
+        if(b)b.innerHTML='🟣 OpenWrt';
     }
 })();
 
@@ -1503,15 +1548,45 @@ function checkUpdate(){
     x.onload=function(){
         try{
             var r=JSON.parse(x.responseText);
+            var info=document.getElementById('up-info');
+            if(info)info.textContent='Установлено: v'+r.current+', доступно: v'+(r.latest||'—');
             if(r.status==='ok'){
-                if(r.update){
-                    toast('Доступна v'+r.latest+'! Текущая: v'+r.current,'ok');
-                }else{
-                    toast('У вас последняя версия v'+r.current,'ok');
-                }
+                if(r.update)toast('Доступна v'+r.latest+'! Текущая: v'+r.current,'ok');
+                else toast('У вас последняя версия v'+r.current,'ok');
             }
         }catch(e){toast('Ошибка проверки','err')}
     };
+    x.send();
+}
+function doUpdateKeep(){
+    var x=new XMLHttpRequest();
+    x.open('GET',API+'?action=auto_update_keep',true);
+    x.timeout=60000;
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'){toast('Обновление запущено! Страница перезагрузится...','ok');setTimeout(function(){location.reload()},3000)}
+            else toast(r.message||'Ошибка','err');
+        }catch(e){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)}
+    };
+    x.onerror=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)};
+    x.ontimeout=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)};
+    x.send();
+}
+function doUpdateClean(){
+    if(!confirm('Удалить все настройки и обновить начисто?'))return;
+    var x=new XMLHttpRequest();
+    x.open('GET',API+'?action=auto_update_clean',true);
+    x.timeout=60000;
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'){toast('Обновление запущено!','ok');setTimeout(function(){location.reload()},3000)}
+            else toast(r.message||'Ошибка','err');
+        }catch(e){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)}
+    };
+    x.onerror=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)};
+    x.ontimeout=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)};
     x.send();
 }
 
@@ -2106,6 +2181,7 @@ start_http_server() {
     date +%s > "$STARTUP_TIME"
     uhttpd -f -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &
     echo $! > "$HTTPD_PID"
+    date +%s > /tmp/iptv-started
     echo_success "Сервер запущен!"
     echo_info "Админка: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
     echo_info "Плейлист: http://$LAN_IP:$IPTV_PORT/playlist.m3u"

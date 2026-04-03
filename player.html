@@ -413,16 +413,27 @@ function toggleTheme(){
     var n=c==='light'?'dark':c==='dark'?'openwrt':'light';
     d.setAttribute('data-theme',n);
     var b=document.getElementById('ttb');
-    if(b)b.textContent=n==='light'?'🌙':n==='dark'?'🟣':'☀️';
+    if(b){
+        if(n==='light')b.textContent='☀️';
+        else if(n==='dark')b.textContent='🌙';
+        else b.textContent='🟣';
+    }
     try{localStorage.setItem('iptv-theme',n)}catch(e){}
 }
 (function(){
     try{
         var t=localStorage.getItem('iptv-theme');
-        if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');document.getElementById('ttb').textContent='🟣'}
-        else if(t==='openwrt'){document.documentElement.setAttribute('data-theme','openwrt');document.getElementById('ttb').textContent='☀️'}
+        var b=document.getElementById('ttb');
+        var labels={light:'☀️',dark:'🌙',openwrt:'🟣'};
+        if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');if(b)b.textContent='🌙'}
+        else if(t==='openwrt'){document.documentElement.setAttribute('data-theme','openwrt');if(b)b.textContent='🟣'}
+        else if(b)b.textContent='☀️';
     }catch(e){}
-    if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt');var b=document.getElementById('ttb');if(b)b.textContent='☀️'}
+    if(window.parent!==window){
+        document.documentElement.setAttribute('data-theme','openwrt');
+        var b=document.getElementById('ttb');
+        if(b)b.textContent='🟣';
+    }
 })();
 </script>
 </body>
