@@ -687,17 +687,28 @@ if [ -n "$ACTION" ]; then
             fi ;;
         check_update)
             CUR="$IPTV_MANAGER_VERSION"
+            # Step 1: Check version number
             LATEST=$(wget -q --timeout=5 -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null | head -10 | grep -o 'IPTV_MANAGER_VERSION="[^"]*"' | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
-            if [ -n "$LATEST" ]; then
-                # Download in background if new version available
-                if [ "$LATEST" != "$CUR" ]; then
-                    wget -q --timeout=30 --no-check-certificate -O "/tmp/IPTV-Manager-new.sh" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null &
-                    printf '{"status":"ok","update":true,"current":"%s","latest":"%s","downloaded":true}' "$CUR" "$LATEST"
+            if [ -n "$LATEST" ] && [ "$LATEST" != "$CUR" ]; then
+                # Version differs - download in background
+                wget -q --timeout=30 --no-check-certificate -O "/tmp/IPTV-Manager-new.sh" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null &
+                printf '{"status":"ok","update":true,"current":"%s","latest":"%s","reason":"version"}' "$CUR" "$LATEST"
+            else
+                # Versions match - check file integrity
+                LOCAL_SUM=$(md5sum "$IPTV_DIR/IPTV-Manager.sh" 2>/dev/null | awk '{print $1}')
+                REMOTE_FULL=$(wget -q --timeout=10 --no-check-certificate -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null)
+                if [ -n "$REMOTE_FULL" ]; then
+                    REMOTE_SUM=$(echo "$REMOTE_FULL" | md5sum | awk '{print $1}')
+                    if [ -n "$LOCAL_SUM" ] && [ "$LOCAL_SUM" != "$REMOTE_SUM" ]; then
+                        # File content differs but version is same (modified/corrupted)
+                        echo "$REMOTE_FULL" > "/tmp/IPTV-Manager-new.sh" 2>/dev/null
+                        printf '{"status":"ok","update":true,"current":"%s","latest":"%s","reason":"file_changed"}' "$CUR" "$LATEST"
+                    else
+                        printf '{"status":"ok","update":false,"current":"%s","latest":"%s","reason":"same"}' "$CUR" "$LATEST"
+                    fi
                 else
                     printf '{"status":"ok","update":false,"current":"%s","latest":"%s"}' "$CUR" "$LATEST"
                 fi
-            else
-                printf '{"status":"ok","update":false,"current":"%s","latest":""}' "$CUR"
             fi ;;
         exec_cmd)
             CMD=$(echo "$POST_DATA" | sed -n 's/.*cmd=\([^&]*\).*/\1/p')
@@ -1551,16 +1562,7 @@ function checkUpdate(){
             var info=document.getElementById('up-info');
             if(info){
                 info.textContent='Установлено: v'+r.current+', доступно: v'+(r.latest||'—');
-                if(r.update)info.style.color='var(--success)';
-            }
-            if(r.status==='ok'){
-                if(r.update)toast('Доступна v'+r.latest+'!','ok');
-                else toast('У вас последняя версия v'+r.current,'ok');
-            }
-        }catch(e){toast('Ошибка проверки','err')}
-    };
-    x.send();
-}
+
 function doUpdateKeep(){
     var info=document.getElementById('up-info');
     if(info)info.textContent='Проверка и обновление...';
