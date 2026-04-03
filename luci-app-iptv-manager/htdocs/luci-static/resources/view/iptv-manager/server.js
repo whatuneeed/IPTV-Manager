@@ -1,101 +1,127 @@
 'use strict';
 'require view';
-'require rpc';
 'require ui';
 
-var CMD = '/etc/iptv/IPTV-Manager.sh';
-var PORT = '8082';
-var LAN = '192.168.1.1';
-var FULL = 'http://' + LAN + ':' + PORT;
+var C = '/etc/iptv/IPTV-Manager.sh';
+var P = '8082';
+var F = 'http://192.168.1.1:' + P;
 
 function isUp(cb) {
     var x = new XMLHttpRequest();
-    x.open('GET', FULL + '/', true);
+    x.open('GET', F + '/', true);
     x.timeout = 2000;
     x.onload = function() { cb(true); };
     x.onerror = x.ontimeout = function() { cb(false); };
     x.send();
 }
 
-var callExec = rpc.declare({
-    object: 'file',
-    method: 'exec',
-    params: ['command', 'params'],
-    expect: {}
+function showFrame() {
+    el.box.style.display = 'none';
+    el.frame.style.display = 'block';
+    el.frame.src = F + '/server.html';
+}
+
+function showBox(msg, showGo, showOff) {
+    el.frame.style.display = 'none';
+    el.box.style.display = '';
+    el.msg.textContent = msg;
+    el.go.style.display = showGo ? '' : 'none';
+    el.off.style.display = showOff ? '' : 'none';
+}
+
+var el = {};
+
+el.box = E('div', {
+    style: 'padding:30px;text-align:center;background:var(--bg,#f0f2f5);color:var(--text,#1a1a2e);border-radius:8px;margin-top:10px'
+});
+el.msg = E('div', {style:'font-size:15px;margin-bottom:16px'}, 'Проверка...');
+el.go = E('button', {class:'cbi-button cbi-button-add', style:'padding:10px 24px;font-size:14px'}, 'Запустить сервер');
+el.off = E('button', {class:'cbi-button cbi-button-negative', style:'padding:10px 24px;font-size:14px'}, 'Остановить сервер');
+el.frame = E('iframe', {
+    src: '', style: 'width:100%;height:calc(100vh - 200px);border:none;display:none'
 });
 
-function doExec(cmd) {
-    return callExec({
+function run(cmd, cb) {
+    L.ubus.call('file', 'exec', {
         command: '/bin/sh',
         params: ['-c', cmd]
+    }).then(function(r) {
+        cb(true);
+    }).catch(function() {
+        var x = new XMLHttpRequest();
+        var act = cmd.indexOf('start') > -1 ? 'server_start' : cmd.indexOf('stop') > -1 ? 'server_stop' : 'server_status';
+        x.open('GET', F + '/cgi-bin/admin.cgi?action=' + act, true);
+        x.timeout = 15000;
+        x.onload = function() { cb(true); };
+        x.onerror = function() { cb(false); };
+        x.ontimeout = function() { cb(false); };
+        x.send();
     });
 }
 
-return view.extend({
-    load: function() {
-        return doExec(CMD + ' status').then(function(r) {
-            var o = ((r && r.stdout) || '').trim();
-            return o.indexOf('running') > -1;
-        }).catch(function() {
-            return false;
-        });
-    },
-
-    render: function(isRunning) {
-        var self = this;
-
-        var box = E('div', {
-            style: 'padding:30px;text-align:center;background:var(--bg,#f0f2f5);color:var(--text,#1a1a2e);border-radius:8px;margin-top:10px'
-        });
-
-        var msg = E('div', {style:'font-size:15px;min-height:20px;margin-bottom:16px'}, isRunning ? '' : 'Сервер остановлен');
-        var goBtn = E('button', {class:'cbi-button cbi-button-add', style:'padding:10px 24px;font-size:14px'}, 'Запустить сервер');
-        var offBtn = E('button', {class:'cbi-button cbi-button-negative', style:'padding:10px 24px;font-size:14px'}, 'Остановить сервер');
-
-        goBtn.onclick = function() {
-            goBtn.disabled = true;
-            goBtn.textContent = 'Запуск...';
-            msg.textContent = 'Запуск сервера...';
-            doExec(CMD + ' start').then(function() {
-                msg.textContent = 'Запущен! Загрузка...';
-                setTimeout(function() { location.reload(); }, 8000);
-            }).catch(function() {
-                msg.textContent = 'Ошибка запуска';
-                goBtn.disabled = false;
-                goBtn.textContent = 'Запустить сервер';
-            });
-        };
-
-        offBtn.onclick = function() {
-            offBtn.disabled = true;
-            offBtn.textContent = 'Остановка...';
-            msg.textContent = 'Остановка сервера...';
-            doExec(CMD + ' stop').then(function() {
-                msg.textContent = 'Сервер остановлен!';
-                setTimeout(function() { location.reload(); }, 4000);
-            }).catch(function() {
-                msg.textContent = 'Ошибка остановки';
-                offBtn.disabled = false;
-                offBtn.textContent = 'Остановить сервер';
-            });
-        };
-
-        if (!isRunning) {
-            box.appendChild(msg);
-            box.appendChild(goBtn);
-            box.appendChild(offBtn);
+el.go.onclick = function() {
+    el.go.disabled = true;
+    el.go.textContent = 'Запуск...';
+    el.msg.textContent = 'Запуск сервера...';
+    run(C + ' start', function(ok) {
+        if (ok) {
+            el.msg.textContent = 'Запущен! Подождите...';
+            setTimeout(function() { location.reload(); }, 8000);
+        } else {
+            el.msg.textContent = 'Ошибка запуска';
+            showBox('Ошибка запуска', true, false);
+            el.go.disabled = false;
+            el.go.textContent = 'Запустить сервер';
         }
+    });
+};
 
-        var frame = E('iframe', {
-            src: isRunning ? FULL + '/server.html' : '',
-            style: 'width:100%;height:calc(100vh - 200px);border:none;' + (isRunning ? '' : 'display:none')
-        });
+el.off.onclick = function() {
+    el.off.disabled = true;
+    el.off.textContent = 'Остановка...';
+    el.msg.textContent = 'Остановка сервера...';
+    run(C + ' stop', function(ok) {
+        if (ok) {
+            el.msg.textContent = 'Сервер остановлен!';
+            setTimeout(function() { location.reload(); }, 4000);
+        } else {
+            el.msg.textContent = 'Ошибка остановки';
+            showBox('Ошибка остановки', false, true);
+            el.off.disabled = false;
+            el.off.textContent = 'Остановить сервер';
+        }
+    });
+};
 
+el.box.appendChild(el.msg);
+el.box.appendChild(el.go);
+el.box.appendChild(el.off);
+
+// Initial check
+isUp(function(running) {
+    if (running) {
+        el.frame.style.display = '';
+        el.box.style.display = 'none';
+        el.go.style.display = 'none';
+        el.off.style.display = '';
+        el.frame.src = F + '/server.html';
+    } else {
+        el.frame.style.display = 'none';
+        el.go.style.display = '';
+        el.off.style.display = 'none';
+        el.msg.textContent = 'Сервер остановлен';
+    }
+});
+
+return view.extend({
+    load: function() { return Promise.resolve(); },
+
+    render: function() {
         return E([
             E('h2', {}, 'Сервер'),
             E('p', {}, 'Управление IPTV сервером'),
-            box,
-            frame
+            el.box,
+            el.frame
         ]);
     }
 });
