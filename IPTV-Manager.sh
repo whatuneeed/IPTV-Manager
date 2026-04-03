@@ -237,13 +237,49 @@ case "$ACTION$ACT" in
         fi
         ;;
     *)
-        HDR
-        printf '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>srv</title><style>*{margin:0;padding:0;box-sizing:border-box}body{margin:0;padding:10px;font:-apple-system,sans-serif;background:%s;color:%s}.c{background:%s;border-radius:8px;padding:24px;border:1px solid %s;text-align:center;max-width:400px;margin:20px auto}b{display:inline-block;padding:8px 16px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;color:#fff;margin:6px}.g{background:#1e8e3e}.r{background:#d93025}b:disabled{opacity:.5;cursor:default}.s{font-size:15px;margin:12px 0;min-height:20px}</style></head><body><div class="c"><h2>\u0421\u0435\u0440\u0432\u0435\u0440</h2><div id="s" class="s">\u041f\u0440\u043e\u0432\u0435\u0440\u043a\u0430...</div><button id="go" class="b g">\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c</button><button id="off" class="b r">\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c</button></div><script>if(window.parent!==window)document.documentElement.setAttribute("data-theme","openwrt");var s=document.getElementById("s"),go=document.getElementById("go"),off=document.getElementById("off");function chk(){var x=new XMLHttpRequest();x.open("GET","srv.cgi?action=status",true);x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.running){s.textContent="\u25cf \u0417\u0430\u043f\u0443\u0449\u0435\u043d";s.style.color="#22c55e";go.textContent="\u2713 \u0420\u0430\u0431\u043e\u0442\u0430\u0435\u0442";go.disabled=true;off.disabled=false}else{s.textContent="\u25cb \u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d";s.style.color="#888";go.textContent="\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c";go.disabled=false;off.disabled=true}}catch(e){}};x.onerror=x.ontimeout=function(){s.textContent="\u25cb \u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d";s.style.color="#888";go.textContent="\u0417\u0430\u043f\u0443\u0441\u0442\u0438\u0442\u044c";go.disabled=false;off.disabled=true};x.send()}function act(a){go.disabled=true;off.disabled=true;if(a==="start"){go.textContent="\u0417\u0430\u043f\u0443\u0441\u043a...";s.textContent="\u0417\u0430\u043f\u0443\u0441\u043a \u0441\u0435\u0440\u0432\u0435\u0440\u0430..."}else{off.textContent="\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430...";s.textContent="\u041e\u0441\u0442\u0430\u043d\u043e\u0432\u043a\u0430 \u0441\u0435\u0440\u0432\u0435\u0440\u0430..."}var x=new XMLHttpRequest();x.open("GET","srv.cgi?action="+a,true);x.timeout=15000;x.onload=function(){if(a==="start"){s.textContent="\u0417\u0430\u043f\u0443\u0449\u0435\u043d! \u041f\u043e\u0434\u043e\u0436\u0434\u0438\u0442\u0435...";setTimeout(function(){location.reload()},8000)}else{s.textContent="\u0421\u0435\u0440\u0432\u0435\u0440 \u043e\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d!";setTimeout(function(){location.reload()},3000)}};x.onerror=x.ontimeout=function(){setTimeout(chk,5000)};x.send()}go.onclick=function(){act("start")};off.onclick=function(){act("stop")};chk()</script></body></html>'
+        cat /www/cgi-bin/srv.html
         ;;
 esac
 SRVEOF
     chmod +x /www/cgi-bin/srv.cgi
+    cat > /www/cgi-bin/srv.html << 'SRVHTML'
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Сервер</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{margin:0;padding:10px;font:-apple-system,sans-serif;background:var(--bg,#f0f2f5);color:var(--text,#1a1a2e)}
+[data-theme="openwrt"]{--bg:#1a1b26;--text:#c0caf5;--card:#24283b;--border:#3b4261}
+[data-theme="dark"]{--bg:#0a0e1a;--text:#e2e8f0;--card:#1e293b;--border:#334155}
+.c{background:var(--card,#fff);border-radius:8px;padding:24px;border:1px solid var(--border,#e0e0e0);text-align:center;max-width:400px;margin:20px auto}
+b{display:inline-block;padding:8px 16px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;color:#fff;margin:6px}
+.g{background:#1e8e3e}.r{background:#d93025}
+b:disabled{opacity:.5;cursor:default}
+.s{font-size:15px;margin:12px 0;min-height:20px}
+</style>
+</head>
+<body>
+<div class="c">
+<h2>Сервер</h2>
+<div id="s" class="s">Проверка...</div>
+<button id="go" class="b g">Запустить</button>
+<button id="off" class="b r">Остановить</button>
+</div>
+<script>
+if(window.parent!==window)document.documentElement.setAttribute('data-theme','openwrt');
+var s=document.getElementById('s'),go=document.getElementById('go'),off=document.getElementById('off');
+function chk(){var x=new XMLHttpRequest();x.open('GET','srv.cgi?action=status',true);x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.running){s.textContent='\u25cf Запущен';s.style.color='#22c55e';go.textContent='\u2713 Работает';go.disabled=true;off.disabled=false}else{s.textContent='\u25cb Остановлен';s.style.color='#888';go.textContent='Запустить';go.disabled=false;off.disabled=true}}catch(e){}};x.onerror=x.ontimeout=function(){s.textContent='\u25cb Остановлен';s.style.color='#888';go.textContent='Запустить';go.disabled=false;off.disabled=true};x.send()}
+function act(a){go.disabled=true;off.disabled=true;if(a==='start'){go.textContent='Запуск...';s.textContent='Запуск сервера...'}else{off.textContent='Остановка...';s.textContent='Остановка сервера...'}var x=new XMLHttpRequest();x.open('GET','srv.cgi?action='+a,true);x.timeout=15000;x.onload=function(){if(a==='start'){s.textContent='Запущен! Подождите...';setTimeout(function(){location.reload()},8000)}else{s.textContent='Сервер остановлен!';setTimeout(function(){location.reload()},3000)}};x.onerror=x.ontimeout=function(){setTimeout(chk,5000)};x.send()}
+go.onclick=function(){act('start')};off.onclick=function(){act('stop')};chk()
+</script>
+</body>
+</html>
+SRVHTML
 }
+
 
 
 # ==========================================
