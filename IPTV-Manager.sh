@@ -212,27 +212,28 @@ ACT=$(echo "$QUERY_STRING" | sed -n 's/.*action=\([^&]*\).*/\1/p')
 case "$ACTION$ACT" in
     *start*)
         JSON
-        # Kill existing, then start via main script (most reliable)
         kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
-        rm -f /var/run/iptv-httpd.pid 2>/dev/null
         sleep 1
         mkdir -p /www/iptv /www/iptv/cgi-bin
         [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null
-        # Use main script's start to generate CGI and launch
-        /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
+        [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml 2>/dev/null
+        uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &>/dev/null &
         printf '{"ok":true}'
         ;;
     *stop*)
         JSON
-        (sleep 2; kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; rm -f $PID) &
+        kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+        rm -f $PID 2>/dev/null
         printf '{"ok":true}'
         ;;
     *status*)
         JSON
-        if [ -f $PID ] && kill -0 "$(cat $PID 2>/dev/null)" 2>/dev/null; then
+        kill -0 $(cat $PID 2>/dev/null) 2>/dev/null && printf '{"ok":true,"running":true}' && exit 0
+        if wget -q -O /dev/null --timeout=2 http://127.0.0.1:8082/ 2>/dev/null; then
             printf '{"ok":true,"running":true}'
         else
-            printf '{"ok":true,"running":false}'
+            printf '{"ok": true,"running":false}'
+        fi
         fi
         ;;
     *)
