@@ -687,28 +687,12 @@ if [ -n "$ACTION" ]; then
             fi ;;
         check_update)
             CUR="$IPTV_MANAGER_VERSION"
-            # Step 1: Check version number
             LATEST=$(wget -q --timeout=5 -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null | head -10 | grep -o 'IPTV_MANAGER_VERSION="[^"]*"' | sed 's/IPTV_MANAGER_VERSION="//;s/"//')
             if [ -n "$LATEST" ] && [ "$LATEST" != "$CUR" ]; then
-                # Version differs - download in background
                 wget -q --timeout=30 --no-check-certificate -O "/tmp/IPTV-Manager-new.sh" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null &
                 printf '{"status":"ok","update":true,"current":"%s","latest":"%s","reason":"version"}' "$CUR" "$LATEST"
             else
-                # Versions match - check file integrity
-                LOCAL_SUM=$(md5sum "$IPTV_DIR/IPTV-Manager.sh" 2>/dev/null | awk '{print $1}')
-                REMOTE_FULL=$(wget -q --timeout=10 --no-check-certificate -O - "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null)
-                if [ -n "$REMOTE_FULL" ]; then
-                    REMOTE_SUM=$(echo "$REMOTE_FULL" | md5sum | awk '{print $1}')
-                    if [ -n "$LOCAL_SUM" ] && [ "$LOCAL_SUM" != "$REMOTE_SUM" ]; then
-                        # File content differs but version is same (modified/corrupted)
-                        echo "$REMOTE_FULL" > "/tmp/IPTV-Manager-new.sh" 2>/dev/null
-                        printf '{"status":"ok","update":true,"current":"%s","latest":"%s","reason":"file_changed"}' "$CUR" "$LATEST"
-                    else
-                        printf '{"status":"ok","update":false,"current":"%s","latest":"%s","reason":"same"}' "$CUR" "$LATEST"
-                    fi
-                else
-                    printf '{"status":"ok","update":false,"current":"%s","latest":"%s"}' "$CUR" "$LATEST"
-                fi
+                printf '{"status":"ok","update":false,"current":"%s","latest":"%s"}' "$CUR" "$LATEST"
             fi ;;
         exec_cmd)
             CMD=$(echo "$POST_DATA" | sed -n 's/.*cmd=\([^&]*\).*/\1/p')
@@ -820,30 +804,40 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"ok","output":"stopped"}'
             fi ;;
         auto_update_keep)
-            # Always download fresh copy first
-            printf '{"status":"ok","message":"Скачиваю обновление..."}'
+            printf '{"status":"ok","message":"Скачивание обновления..."}' &
             TMPN="/tmp/IPTV-Manager-new.sh"
-            if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
+            (
+                # 1. Download fresh script
+                wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null
+                if [ ! -s "$TMPN" ]; then exit 1; fi
+                # 2. Kill old uhttpd
                 kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
                 sleep 1
-                rm -f "$IPTV_DIR"/*.conf "$IPTV_DIR"/*.json "$IPTV_DIR"/*.m3u
+                # 3. Replace script
                 cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
                 chmod +x "$IPTV_DIR/IPTV-Manager.sh"
                 rm -f "$TMPN"
+                # 4. Generate all CGI and start (this includes srv.cgi!)
                 "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
-            fi
+            ) &
             ;;
         factory_reset)
-            printf '{"status":"ok","message":"Сброс к заводским! Перезапустите скрипт в терминале."}'
+            printf '{"status":"ok","message":"Сброс к заводским..."}' &
+            TMPN="/tmp/IPTV-Manager-new.sh"
             (
-                sleep 2
+                sleep 1
                 kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
                 sleep 1
                 rm -f "$IPTV_DIR"/*.conf "$IPTV_DIR"/*.json "$IPTV_DIR"/*.m3u
                 rm -f /tmp/iptv-started
-                # Download freshest script
-                wget -q --timeout=30 --no-check-certificate -O "$IPTV_DIR/IPTV-Manager.sh" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null
-                chmod +x "$IPTV_DIR/IPTV-Manager.sh" 2>/dev/null
+                # Download fresh script 
+                wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null
+                if [ -s "$TMPN" ]; then
+                    cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
+                    chmod +x "$IPTV_DIR/IPTV-Manager.sh"
+                    rm -f "$TMPN"
+                fi
+                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
             ) &
             ;;
     esac
@@ -1584,14 +1578,25 @@ function doUpdateKeep(){
                 // Download then update
                 var y=new XMLHttpRequest();
                 y.open('GET',API+'?action=auto_update_keep',true);
-                y.timeout=60000;
+                y.timeout=120000;
                 y.onload=function(){
-                    toast('Обновление запущено! Страница перезагрузится...','ok');
-                    setTimeout(function(){location.reload()},5000);
+                    // Don't reload immediately - wait for server to come up
+                    toast('Обновление запущено! Подождите 15 сек...','ok');
+                    var retryCount=0;
+                    var retryReload=function(){
+                        retryCount++;
+                        if(retryCount>15){location.reload();return}
+                        var z=new XMLHttpRequest();
+                        z.open('GET',API,true);z.timeout=3000;
+                        z.onload=function(){location.reload()};
+                        z.onerror=z.ontimeout=function(){setTimeout(retryReload,1000)};
+                        z.send();
+                    };
+                    setTimeout(retryReload,10000);
                 };
                 y.onerror=y.ontimeout=function(){
                     toast('Запущено! Подождите...','ok');
-                    setTimeout(function(){location.reload()},5000);
+                    setTimeout(function(){location.reload()},15000);
                 };
                 y.send();
             }else{
@@ -1600,22 +1605,20 @@ function doUpdateKeep(){
             }
         }catch(e){toast('Ошибка','err')}
     };
+    x.onerror=function(){toast('Ошибка сети','err')};
     x.send();
 }
 function doUpdateClean(){
-    if(!confirm('Сбросить все настройки к заводским?'))return;
+    if(!confirm('Сбросить все настройки к заводским? Сервер перезапустится.'))return;
     var x=new XMLHttpRequest();
-    x.open('GET',API+'?action=auto_update_clean',true);
-    x.timeout=60000;
+    x.open('GET',API+'?action=factory_reset',true);
+    x.timeout=120000;
     x.onload=function(){
-        try{
-            var r=JSON.parse(x.responseText);
-            if(r.status==='ok'){toast('Сброс запущен!','ok');setTimeout(function(){location.reload()},5000)}
-            else toast(r.message||'Ошибка','err');
-        }catch(e){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)}
+        toast('Сброс запущен! Подождите 15 сек...','ok');
+        setTimeout(function(){location.reload()},15000);
     };
-    x.onerror=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)};
-    x.ontimeout=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},5000)};
+    x.onerror=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},15000)};
+    x.ontimeout=function(){toast('Запущено! Подождите...','ok');setTimeout(function(){location.reload()},15000)};
     x.send();
 }
 
