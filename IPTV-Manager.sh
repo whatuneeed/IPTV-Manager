@@ -56,6 +56,7 @@ _auto_update
 # Clean old/invalid CGI before generating
 rm -f /www/iptv/admin.cgi /www/iptv/channels.json /www/iptv/playlist.m3u /www/iptv/epg.xml /www/iptv/epg.cgi
 rm -f /www/iptv/player.html /www/iptv/epg.json
+rm -f /www/cgi-bin/srv.cgi
 
 # Download EPG from URL → /tmp/iptv-epg.xml.gz
 # Usage: _dl_epg "https://..."  (returns 0 on success, sets $EPG_GZ_SZ to human-readable size)
@@ -195,6 +196,81 @@ chk();
 </body>
 </html>
 SERVEREOF
+}
+
+# ==========================================
+# Генерация srv.cgi (на порту 80 - ВСЕГДА доступен)
+# ==========================================
+generate_srv_cgi() {
+    mkdir -p /www/cgi-bin
+    cat > /www/cgi-bin/srv.cgi << 'SRVEOF'
+#!/bin/sh
+PID=/var/run/iptv-httpd.pid
+HDR() { printf 'Content-Type: text/html; charset=utf-8\r\n\r\n'; }
+JSON() { printf 'Content-Type: application/json\r\n\r\n'; }
+ACT=$(echo "$QUERY_STRING" | sed -n 's/.*action=\([^&]*\).*/\1/p')
+case "$ACTION$ACT" in
+    *start*)
+        JSON
+        (sleep 1; kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 1; mkdir -p /www/iptv/cgi-bin; [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null; nohup uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &) &
+        printf '{"ok":true}'
+        ;;
+    *stop*)
+        JSON
+        (sleep 2; kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; rm -f $PID) &
+        printf '{"ok":true}'
+        ;;
+    *status*)
+        JSON
+        if [ -f $PID ] && kill -0 "$(cat $PID 2>/dev/null)" 2>/dev/null; then
+            printf '{"ok":true,"running":true}'
+        else
+            printf '{"ok":true,"running":false}'
+        fi
+        ;;
+    *)
+        HDR
+        cat << 'HTML'
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Сервер</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{margin:0;padding:10px;font-family:-apple-system,sans-serif;background:var(--bg,#f0f2f5);color:var(--text,#1a1a2e)}
+[data-theme="openwrt"]{--bg:#1a1b26;--text:#c0caf5;--card:#24283b;--border:#3b4261;--primary:#7aa2f7;--success:#9ece6a;--danger:#f7768e}
+[data-theme="dark"]{--bg:#0a0e1a;--text:#e2e8f0;--card:#1e293b;--border:#334155;--primary:#3b82f6;--success:#22c55e;--danger:#ef4444}
+body{--bg:#f0f2f5;--text:#1a1a2e;--card:#fff;--border:#e0e0e0;--primary:#1a73e8;--success:#1e8e3e;--danger:#d93025}
+.c{background:var(--card);border-radius:8px;padding:24px;border:1px solid var(--border);text-align:center;max-width:400px;margin:20px auto}
+b{display:inline-block;padding:8px 16px;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer;color:#fff;margin:6px}
+.g{background:var(--success)}.r{background:var(--danger)}b:disabled{opacity:.5;cursor:default}
+.s{font-size:15px;margin:12px 0;min-height:20px}
+</style>
+</head>
+<body>
+<div class="c">
+<h2>Сервер</h2>
+<div id="s" class="s">Проверка...</div>
+<button id="go" class="b g">Запустить</button>
+<button id="off" class="b r">Остановить</button>
+</div>
+<script>
+if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt')}
+else{try{var t=localStorage.getItem('iptv-theme');if(t){document.documentElement.setAttribute('data-theme',t)}}catch(e){}}
+var s=document.getElementById('s'),go=document.getElementById('go'),off=document.getElementById('off');
+function chk(){var x=new XMLHttpRequest();x.open('GET','?action=status',true);x.onload=function(){try{var r=JSON.parse(x.responseText);if(r.running){s.textContent='\u25cf Запущен';s.style.color='var(--success)';go.textContent='\u2713 Работает';go.disabled=true;off.disabled=false}else{s.textContent='\u25cb Остановлен';s.style.color='#888';go.textContent='Запустить';go.disabled=false;off.disabled=true}}catch(e){}};x.onerror=x.ontimeout=function(){s.textContent='\u25cb Остановлен';s.style.color='#888';go.textContent='Запустить';go.disabled=false;off.disabled=true};x.send()}
+function act(a){go.disabled=true;off.disabled=true;if(a==='start'){go.textContent='Запуск...';s.textContent='Запуск сервера...'}else{off.textContent='Остановка...';s.textContent='Остановка сервера...'}var x=new XMLHttpRequest();x.open('GET','?action='+a,true);x.timeout=15000;x.onload=function(){if(a==='start'){s.textContent='Запущен! Подождите...';setTimeout(function(){location.reload()},8000)}else{s.textContent='Сервер остановлен!';setTimeout(function(){location.reload()},3000)}};x.onerror=x.ontimeout=function(){setTimeout(chk,5000)};x.send()}
+go.onclick=function(){act('start')};off.onclick=function(){act('stop')};chk()
+</script>
+</body>
+</html>
+HTML
+        ;;
+esac
+SRVEOF
+    chmod +x /www/cgi-bin/srv.cgi
 }
 
 # ==========================================
@@ -1803,6 +1879,7 @@ start_http_server() {
     cp "$IPTV_DIR/server.html" /www/iptv/server.html 2>/dev/null || true
     [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
     generate_cgi
+    generate_srv_cgi
     if [ -f "$HTTPD_PID" ] && kill -0 $(cat "$HTTPD_PID") 2>/dev/null; then
         echo_success "Сервер обновлён: http://$LAN_IP:$IPTV_PORT/"
         return
