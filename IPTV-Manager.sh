@@ -6,7 +6,7 @@ SELF="$0"
 # IPTV Manager для OpenWrt v3.11
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.13"
+IPTV_MANAGER_VERSION="3.16"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -364,7 +364,7 @@ generate_cgi() {
     # --- CGI файл (без раскрытия переменных) ---
     cat > /www/iptv/cgi-bin/admin.cgi << 'CGIEOF'
 #!/bin/sh
-IPTV_MANAGER_VERSION="3.12"
+IPTV_MANAGER_VERSION="3.16"
 PL="/etc/iptv/playlist.m3u"
 EC="/etc/iptv/iptv.conf"
 EGZ="/tmp/iptv-epg.xml.gz"
@@ -807,33 +807,40 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"ok","output":"stopped"}'
             fi ;;
         auto_update_keep)
-            TMPN="/tmp/IPTV-Manager-new.sh"
-            if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
+            # Send response FIRST
+            printf '{"status":"ok","message":"Обновлено с сохранением настроек"}'
+            # Background script handles everything
+            (
+                sleep 2
                 kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
                 sleep 1
-                cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
-                chmod +x "$IPTV_DIR/IPTV-Manager.sh"
-                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
-                printf '{"status":"ok","message":"Обновлено с сохранением настроек"}'
-            else
-                printf '{"status":"error","message":"Не удалось скачать обновление"}'
-            fi
-            rm -f "$TMPN"
+                TMPN="/tmp/IPTV-Manager-new.sh"
+                if [ -s "$TMPN" ]; then
+                    cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
+                    chmod +x "$IPTV_DIR/IPTV-Manager.sh"
+                    rm -f "$TMPN"
+                fi
+                # Run start which regenerates CGI files
+                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1
+            ) &
             ;;
         auto_update_clean)
-            TMPN="/tmp/IPTV-Manager-new.sh"
-            if wget -q --timeout=30 --no-check-certificate -O "$TMPN" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null && [ -s "$TMPN" ]; then
+            printf '{"status":"ok","message":"Обновлено начисто"}'
+            (
+                sleep 2
                 kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
                 sleep 1
                 rm -f "$IPTV_DIR"/*.conf "$IPTV_DIR"/*.json "$IPTV_DIR"/*.m3u
-                cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
-                chmod +x "$IPTV_DIR/IPTV-Manager.sh"
-                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1 &
-                printf '{"status":"ok","message":"Обновлено начисто"}'
-            else
-                printf '{"status":"error","message":"Не удалось скачать обновление"}'
-            fi
-            rm -f "$TMPN"
+                rm -f /tmp/iptv-started
+                TMPN="/tmp/IPTV-Manager-new.sh"
+                if [ -s "$TMPN" ]; then
+                    cp "$TMPN" "$IPTV_DIR/IPTV-Manager.sh"
+                    chmod +x "$IPTV_DIR/IPTV-Manager.sh"
+                    rm -f "$TMPN"
+                fi
+                # Run start which regenerates everything from scratch
+                "$IPTV_DIR/IPTV-Manager.sh" start >/dev/null 2>&1
+            ) &
             ;;
     esac
     exit 0
