@@ -2355,7 +2355,7 @@ INITEOF
         rm -f /usr/share/luci/menu.d/luci-app-iptv-manager.json
         rm -f /usr/share/rpcd/acl.d/luci-app-iptv-manager.json
         local luci_base="https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/luci-app-iptv-manager"
-        local luci_files="htdocs/luci-static/resources/view/iptv-manager/iptv.js htdocs/luci-static/resources/view/iptv-manager/player.js htdocs/luci-static/resources/view/iptv-manager/server.js root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
+        local luci_files="htdocs/luci-static/resources/view/iptv-manager/iptv.js htdocs/luci-static/resources/view/iptv-manager/player.js htdocs/luci-static/resources/view/iptv-manager/server.js htdocs/luci-static/resources/view/iptv-manager/srv.cgi htdocs/luci-static/resources/view/iptv-manager/srv.html root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
         local total=0
         local ok=0
         for f in $luci_files; do
