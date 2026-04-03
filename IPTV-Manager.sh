@@ -400,18 +400,6 @@ check_api_token() {
     auth_fail
 }
 check_auth
-# Rate limit & IP whitelist
-_rl_ip="${REMOTE_ADDR%:*}"
-if ! _ip_whitelist; then
-    json_hdr 2>/dev/null
-    printf '{"status":"error","message":"IP ${_rl_ip} not in whitelist"}'
-    exit 0
-fi
-if [ -n "$ACTION" ] && ! _rate_limit; then
-    json_hdr 2>/dev/null
-    printf '{"status":"error","message":"Too many requests, try again later"}'
-    exit 0
-fi
 METHOD="${REQUEST_METHOD:-GET}"
 QUERY="${QUERY_STRING:-}"
 CL="${CONTENT_LENGTH:-0}"
