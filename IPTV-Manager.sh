@@ -3,10 +3,10 @@
 SELF="$0"
 [ -f "$SELF" ] && sed -i 's/\r$//' "$SELF" 2>/dev/null
 # ==========================================
-# IPTV Manager для OpenWrt v3.11
+# IPTV Manager для OpenWrt v3.19
 # ==========================================
 
-IPTV_MANAGER_VERSION="3.16"
+IPTV_MANAGER_VERSION="3.19"
 GREEN="\033[1;32m"; RED="\033[1;31m"; CYAN="\033[1;36m"; YELLOW="\033[1;33m"; MAGENTA="\033[1;35m"; NC="\033[0m"
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
@@ -131,7 +131,7 @@ file_size() {
     elif [ "$s" -gt 1024 ] 2>/dev/null; then echo "$((s/1024)) KB"
     else echo "${s} B"; fi
 }
-int_text() { case "$1" in 0) echo "Выкл";; 1) echo "Каждый час";; 6) echo "Каждые 6ч";; 12) echo "Каждые 12ч";; 24) echo "Раз в сутки";; *) echo "Выкл";; esac; }
+int_text() { case "${1:-0}" in 0) echo "Выкл";; 1) echo "Каждый час";; 6) echo "Каждые 6ч";; 12) echo "Каждые 12ч";; 24) echo "Раз в сутки";; *) echo "Выкл";; esac; }
 detect_builtin_epg() {
     [ -f "$PLAYLIST_FILE" ] || return
     local epg=""
@@ -2896,10 +2896,9 @@ reinstall_iptv() {
 # ==========================================
 _set_sched() {
     load_sched
-    PLAYLIST_INTERVAL="$1"
-    EPG_INTERVAL="$EPG_INTERVAL"
-    [ -n "$EPG_INTERVAL" ] || EPG_INTERVAL="0"
-    save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "$PLAYLIST_LAST_UPDATE" "$EPG_LAST_UPDATE"
+    PLAYLIST_INTERVAL="${1:-0}"
+    EPG_INTERVAL="${EPG_INTERVAL:-0}"
+    save_sched "$PLAYLIST_INTERVAL" "$EPG_INTERVAL" "${PLAYLIST_LAST_UPDATE:--}" "${EPG_LAST_UPDATE:--}"
     echo_success "Расписание плейлиста: $(int_text $PLAYLIST_INTERVAL)"
 }
 
@@ -3123,19 +3122,24 @@ install_luci_plugin() {
 print_header() {
     clear
     load_sched
-    local ch=$(get_ch)
+    [ -z "$PLAYLIST_INTERVAL" ] && PLAYLIST_INTERVAL="0"
+    [ -z "$EPG_INTERVAL" ] && EPG_INTERVAL="0"
+    [ -z "$PLAYLIST_LAST_UPDATE" ] && PLAYLIST_LAST_UPDATE="—"; [ -z "$EPG_LAST_UPDATE" ] && EPG_LAST_UPDATE="—"
+    local _c=$(get_ch)
+    local ch="${_c:-0}"
     local srv_status="❌ Остановлен"
-    local srv_uptime=""
+    local srv_uptime="—"
     if [ -f "$HTTPD_PID" ] && kill -0 "$(cat "$HTTPD_PID" 2>/dev/null)" 2>/dev/null; then
         srv_status="✅ Запущен"
         if [ -f "$STARTUP_TIME" ]; then
             local _sn=$(cat "$STARTUP_TIME" 2>/dev/null)
             if [ -n "$_sn" ]; then
                 local _now=$(date +%s)
-                local _diff=$((_now - _sn))
+                local _diff=$(((_now+0) - (_sn+0)))
                 if [ "$_diff" -gt 0 ] 2>/dev/null; then
                     local _id=$((_diff / 86400)); local _ih=$(((_diff % 86400) / 3600)); local _im=$(((_diff % 3600) / 60))
-                    srv_uptime=""; [ "$_id" -gt 0 ] && srv_uptime="${_id}д "
+                    srv_uptime=""
+                    [ "$_id" -gt 0 ] && srv_uptime="${_id}д "
                     srv_uptime="${srv_uptime}${_ih}ч ${_im}м"
                 fi
             fi
@@ -3143,22 +3147,22 @@ print_header() {
     fi
     load_config
     load_epg
-    local display_epg="❌"
-    [ -n "$EPG_URL" ] && display_epg="✅"
-    local display_ram="$(du -sh /etc/iptv 2>/dev/null | cut -f1)"
+    local display_epg="❌"; [ -n "$EPG_URL" ] && display_epg="✅"
+    local display_ram="0K"
+    [ -d /etc/iptv ] && display_ram=$(du -sh /etc/iptv 2>/dev/null | cut -f1)
     [ -z "$display_ram" ] && display_ram="0K"
- 
-    local display_disk="$(du -sh /www/iptv 2>/dev/null | cut -f1)"
+    local display_disk="0K"
+    [ -d /www/iptv ] && display_disk=$(du -sh /www/iptv 2>/dev/null | cut -f1)
     [ -z "$display_disk" ] && display_disk="0K"
 
     echo ""
-    echo -e "${MAGENTA}╔══════════════════════════════════════════╗${NC}"
-    echo -e "${MAGENTA}║${NC}     IPTV Manager v${CYAN}$IPTV_MANAGER_VERSION${MAGENTA}                  ║${NC}"
-    echo -e "${MAGENTA}╠══════════════════════════════════════════╣${NC}"
-    echo -e "${MAGENTA}║${NC} 🌐 ${CYAN}$LAN_IP${MAGENTA}:${CYAN}$IPTV_PORT${NC}      📺 ${GREEN}$ch${NC} каналов    ${MAGENTA}║${NC}"
-    echo -e "${MAGENTA}║${NC} 📡 EPG: ${CYAN}$display_epg${NC}   💾 ${CYAN}$display_ram${NC}   🗄️ ${CYAN}$display_disk${NC}     ${MAGENTA}║${NC}"
-    echo -e "${MAGENTA}║${NC} 🖥️  Сервер: ${GREEN}$srv_status${NC}  ⏱️ ${CYAN}${srv_uptime:-—}${NC}  ${MAGENTA}║${NC}"
-    echo -e "${MAGENTA}╚══════════════════════════════════════════╝${NC}"
+    echo -e "${MAGENTA}╔══════════════════════════════════════════════╗${NC}"
+    echo -e "${MAGENTA}║${NC}     IPTV Manager v${CYAN}$IPTV_MANAGER_VERSION${MAGENTA}                     ║${NC}"
+    echo -e "${MAGENTA}╠══════════════════════════════════════════════╣${NC}"
+    echo -e "${MAGENTA}║${NC} 🌐 ${CYAN}$LAN_IP${MAGENTA}:${CYAN}$IPTV_PORT${NC}        📺 ${GREEN}$ch${NC} каналов         ║${NC}"
+    printf "${MAGENTA}║${NC} 📡 EPG: ${CYAN}%-2s${NC}   💾 ${CYAN}%-6s${NC}  🗄️ ${CYAN}%-7s${NC} ║\n" "$display_epg" "$display_ram" "$display_disk" "║${NC}"
+    printf "${MAGENTA}║${NC} 🖥️  Сервер: %-10s ⏱️ ${CYAN}%-10s${NC}       ║\n" "$srv_status" "$srv_uptime" "${NC}"
+    echo -e "${MAGENTA}╚══════════════════════════════════════════════╝${NC}"
     echo ""
 }
 
@@ -3187,14 +3191,14 @@ show_menu() {
         return
     fi
 
-    echo -e "${YELLOW}── Главное меню ─────────────────────────${NC}"
-    echo -e "${CYAN} 1) ${GREEN}📡  Плейлист${NC}          (загрузка, провайдер)"
-    echo -e "${CYAN} 2) ${GREEN}📺  Телепрограмма${NC}      (EPG)"
-    echo -e "${CYAN} 3) ${GREEN}🔧  Сервер${NC}             (запуск/остановка)"
-    echo -e "${CYAN} 4) ${GREEN}⏰  Расписание${NC}          (автообновление)"
-    echo -e "${CYAN} 5) ${GREEN}🔒  Безопасность${NC}        (пароль, API, IP)"
-    echo -e "${CYAN} 6) ${GREEN}💾  Бэкап${NC}              (сохранить/восстановить)"
-    echo -e "${CYAN} 7) ${GREEN}🔄  Обновление${NC}          (версия, сброс)"
+    echo -e "${YELLOW}── Главное меню ────────────────────────${NC}"
+    echo -e "${CYAN} 1) ${GREEN}📡  Плейлист${NC}"
+    echo -e "${CYAN} 2) ${GREEN}📺  Телепрограмма${NC}"
+    echo -e "${CYAN} 3) ${GREEN}🔧  Сервер${NC}"
+    echo -e "${CYAN} 4) ${GREEN}⏰  Расписание${NC}"
+    echo -e "${CYAN} 5) ${GREEN}🔒  Безопасность${NC}"
+    echo -e "${CYAN} 6) ${GREEN}💾  Бэкап${NC}"
+    echo -e "${CYAN} 7) ${GREEN}🔄  Обновление${NC}"
     echo ""
     echo -e "${CYAN} 0) Удалить IPTV Manager${NC}"
     echo -e "${CYAN} q) Выход${NC}"
@@ -3204,7 +3208,7 @@ show_menu() {
     case "$c" in
         1) menu_playlist ;; 2) menu_epg ;; 3) menu_server ;;
         4) menu_schedule ;; 5) menu_security ;; 6) menu_backup ;;
-        7) menu_update ;; 0) menu_uninstall ;; q|Q) exit 0 ;;
+        7) menu_update ;; 0) show_uninstall ;; q|Q) exit 0 ;;
         *) echo_info "Отмена"; return ;;
     esac
     PAUSE
@@ -3241,19 +3245,13 @@ menu_epg() {
     echo -e "${YELLOW}── 📺 Телепрограмма (EPG) ───────────────${NC}"
     echo -e "  URL: ${CYAN}${EPG_URL:—}${NC}"
     echo ""
-    echo -e "${CYAN} 1) Настроить EPG${NC}"
-    echo -e "${CYAN} 2) Обновить EPG${NC}"
-    echo -e "${CYAN} 3) Удалить EPG${NC}"
+    echo_color "✅ Готово! IPTV Manager настроен."
     echo ""
-    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
+    echo -e "  ${CYAN}Админка:${NC}  http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
+    echo -e "  ${CYAN}Плейлист:${NC}  http://$LAN_IP:$IPTV_PORT/playlist.m3u"
+    echo -e "  ${CYAN}EPG:${NC}  http://$LAN_IP:$IPTV_PORT/epg.xml"
     echo ""
-    echo -ne "${YELLOW}> ${NC}"
-    read c </dev/tty
-    case "$c" in
-        1) setup_epg ;; 2) do_update_epg ;; 3) remove_epg ;;
-        9|0) return ;; *) echo_info "Отмена"; return ;;
-    esac
-    PAUSE
+    echo -e "  ${YELLOW}Откройте админку: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi${NC}"
 }
 
 menu_server() {
@@ -3368,7 +3366,6 @@ menu_update() {
     echo -e "${CYAN} 1) 🔍 Проверить обновления${NC}"
     echo -e "${CYAN} 2) ⬇️  Обновить (с сохранением настроек)${NC}"
     echo -e "${CYAN} 3) 🏭 Сброс к заводским${NC}"
-    echo -e "${CYAN} 4) ❌ Удалить IPTV Manager${NC}"
     echo ""
     echo -e "${CYAN} 9) Назад    0) Выход${NC}"
     echo ""
@@ -3376,18 +3373,17 @@ menu_update() {
     read c </dev/tty
     case "$c" in
         1) check_for_updates ;; 2) do_update_script ;;
-        3) express_factory_reset ;; 4) menu_uninstall ;;
-        9|0) return ;; *) echo_info "Отмена"; return ;;
+        3) express_factory_reset ;; 9|0) return ;;
+        *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
 
-menu_uninstall() {
+show_uninstall() {
     print_header
     echo -e "${YELLOW}── ❌ Полное удаление ──────────────────${NC}"
     echo -e "  Будет удалено:"
-    echo -e "  • Все конфиги и настройки"
-    echo -e "  • Плейлист и EPG"
+    echo -e "  • Все конфиги, настройки, плейлист и EPG"
     echo -e "  • Временные файлы"
     echo -e "  • LuCI плагин"
     echo -e "  • Init-скрипт"
@@ -3403,6 +3399,11 @@ menu_uninstall() {
         9|0) return ;; *) echo_info "Отмена"; return ;;
     esac
     PAUSE
+}
+
+menu_uninstall() {
+    print_header
+    uninstall
 }
 
 # Handle start/stop commands (for LuCI init script and manual calls)
