@@ -256,8 +256,14 @@ case "$ACTION$ACT" in
         ;;
     *status*)
         JSON
-        if [ -f /www/iptv/cgi-bin/admin.cgi ] && wget -q --spider --timeout=2 http://127.0.0.1:8082/ 2>/dev/null; then
+        _running=false
+        [ -f /www/iptv/cgi-bin/admin.cgi ] && [ -n "$(pgrep -f 'uhttpd.*:8082')" ] && wget -q --timeout=2 -O /dev/null "http://127.0.0.1:8082/cgi-bin/admin.cgi" 2>/dev/null && _running=true
+        if [ "$_running" = "true" ]; then
             printf '{"ok":true,"running":true}'
+        elif [ -f /www/iptv/cgi-bin/admin.cgi ]; then
+            # admin.cgi exists but server down — auto-heal
+            /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
+            printf '{"ok":true,"running":false}'
         else
             printf '{"ok":true,"running":false}'
         fi
@@ -2247,14 +2253,15 @@ start_http_server() {
     cp "$IPTV_DIR/server.html" /www/iptv/server.html 2>/dev/null || true
     [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
     generate_cgi
-    generate_player 2>/dev/null
+    generate_player
     generate_srv_cgi
-    if [ -f "$HTTPD_PID" ] && kill -0 $(cat "$HTTPD_PID") 2>/dev/null; then
-        echo_success "Сервер обновлён: http://$LAN_IP:$IPTV_PORT/"
+    # Check if already running (via pgrep, not PID)
+    if [ -n "$(pgrep -f 'uhttpd.*:8082')" ]; then
+        echo_success "Сервер уже запущен: http://$LAN_IP:$IPTV_PORT/"
         return
     fi
-    kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
-    sleep 1
+    kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+    sleep 2
     # Record server start time for uptime tracking
     date +%s > "$STARTUP_TIME"
     uhttpd -f -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &
