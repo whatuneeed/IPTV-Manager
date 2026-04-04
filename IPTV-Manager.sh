@@ -2304,24 +2304,34 @@ start_http_server() {
     generate_cgi
     generate_player
     generate_srv_cgi
-    # Check if already running (via pgrep, not PID)
-    if [ -n "$(pgrep -f 'uhttpd.*:8082')" ]; then
-        echo_success "Сервер уже запущен: http://$LAN_IP:$IPTV_PORT/"
-        return
-    fi
-    kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
+    # Kill any existing with -9 (same as working case start))
+    kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null 2>/dev/null
     sleep 2
     # Record server start time for uptime tracking
     date +%s > "$STARTUP_TIME"
-    uhttpd -f -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &
+    uhttpd -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
     echo $! > "$HTTPD_PID"
     date +%s > /tmp/iptv-started
+    # Verify server responds (same as working case start))
+    _tries=0
+    while [ "$_tries" -lt 15 ]; do
+        _tries=$((_tries + 1))
+        sleep 1
+        if wget -q --timeout=1 -O /dev/null "http://127.0.0.1:$IPTV_PORT/" 2>/dev/null; then
+            break
+        fi
+    done
     # Start watchdog (auto-heal if server crashes)
     setup_watchdog
-    echo_success "Сервер запущен!"
-    echo_info "Админка: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
-    echo_info "Плейлист: http://$LAN_IP:$IPTV_PORT/playlist.m3u"
-    echo_info "EPG: http://$LAN_IP:$IPTV_PORT/epg.xml"
+    if wget -q --timeout=2 -O /dev/null "http://127.0.0.1:$IPTV_PORT/" 2>/dev/null; then
+        local _pid=$(pgrep -f "uhttpd.*8082" | head -1)
+        echo "$_pid" > "$HTTPD_PID"
+        echo_success "Сервер запущен! (${_tries} попыток)"
+        echo_info "Админка: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
+    else
+        echo_error "Ошибка: uhttpd не запустился. Проверьте: logread | grep uhttpd"
+    fi
+}
 }
 stop_http_server() {
     kill $(cat "$HTTPD_PID" 2>/dev/null) 2>/dev/null
@@ -3036,10 +3046,6 @@ express_setup() {
     install_luci_plugin
     echo_success "✓ Плагин установлен"
 
-    echo -e "${YELLOW}[7/7] Запускаю Watchdog...${NC}"
-    setup_watchdog
-    echo_success "✓ Авто-восстановление сервера включено"
-    
     echo ""
     echo_color "✅ Готово! IPTV Manager настроен."
     echo "   Ссылка на админку: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
