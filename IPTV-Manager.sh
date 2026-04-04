@@ -1,4 +1,4 @@
-﻿#!/bin/sh
+#!/bin/sh
 # Strip BOM and CRLF (fix for Windows edits / GitHub downloads)
 SELF="$0"
 if [ -f "$SELF" ]; then sed -i '1s/^\xef\xbb\xbf//;s/\r$//' "$SELF" 2>/dev/null; fi
