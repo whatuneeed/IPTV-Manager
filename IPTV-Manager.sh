@@ -3511,17 +3511,27 @@ case "$1" in
     start)
         echo "=== Запуск IPTV-сервера ==="
         # Kill any existing uhttpd on port 8082
-        kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 1
+        kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null 2>/dev/null
+        sleep 2
         # Generate CGI and prepare dirs
         generate_cgi
         generate_srv_cgi
         mkdir -p /www/iptv/cgi-bin
         [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
-        # Start in background with nohup
-        nohup uhttpd -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
-        echo $! > /var/run/iptv-httpd.pid
+        # Start in background (no nohup on BusyBox)
+        uhttpd -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
         sleep 3
-        echo "Сервер запущен (PID: $(cat /var/run/iptv-httpd.pid 2>/dev/null))"
+        # Verify it actually started
+        if [ -n "$(pgrep -f 'uhttpd.*8082')" ]; then
+            local pid=$(pgrep -f 'uhttpd.*8082' | head -1)
+            echo "$pid" > /var/run/iptv-httpd.pid
+            echo "Сервер запущен (PID: $pid)"
+        else
+            echo "Ошибка: uhttpd не запустился!"
+            exit 1
+        fi
+        # Start watchdog
+        setup_watchdog
         exit 0
         ;;
     stop)
