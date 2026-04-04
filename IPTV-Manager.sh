@@ -2819,6 +2819,7 @@ do_update_script() {
         cp "$0" "/etc/iptv/IPTV-Manager.sh.bak" 2>/dev/null
         cp "$tmp" "/etc/iptv/IPTV-Manager.sh"
         chmod +x "/etc/iptv/IPTV-Manager.sh"
+        ln -sf /etc/iptv/IPTV-Manager.sh /usr/bin/iptv 2>/dev/null
         rm -f "$tmp"
         echo_success "Обновлено до v$new_ver!"
         echo_info "Перезапуск..."
@@ -2841,6 +2842,7 @@ install_iptv() {
         mkdir -p /etc/iptv
         cp "$tmp" "/etc/iptv/IPTV-Manager.sh"
         chmod +x "/etc/iptv/IPTV-Manager.sh"
+        ln -sf /etc/iptv/IPTV-Manager.sh /usr/bin/iptv 2>/dev/null
         rm -f "$tmp"
         echo_success "Установлено! Запуск..."
         exec sh "/etc/iptv/IPTV-Manager.sh"
@@ -2963,11 +2965,7 @@ express_setup() {
     
     echo ""
     echo_color "✅ Готово! IPTV Manager настроен."
-    echo "   Админка: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
-    echo "   Плейлист: http://$LAN_IP:$IPTV_PORT/playlist.m3u"
-    echo "   EPG: http://$LAN_IP:$IPTV_PORT/epg.xml"
-    echo ""
-    echo -e "${YELLOW}Откройте админку: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi${NC}"
+    echo "   Ссылка на админку: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
 }
 
 express_factory_reset() {
@@ -3224,6 +3222,10 @@ show_menu() {
     
     echo ""
     echo -e "${YELLOW}── 💡 Главное меню ────────────────────────${NC}"
+    echo -e "  📌 ${CYAN}Админка:${NC}  http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
+    echo -e "  📌 ${CYAN}Плейлист:${NC} http://$LAN_IP:$IPTV_PORT/playlist.m3u"
+    echo -e "  📌 ${CYAN}EPG:${NC}      http://$LAN_IP:$IPTV_PORT/epg.xml"
+    echo ""
     echo -e "${CYAN} 1) ${GREEN}📡  Плейлист${NC}"
     echo -e "${CYAN} 2) ${GREEN}📺  Телепрограмма${NC}"
     echo -e "${CYAN} 3) ${GREEN}🔧  Сервер${NC}"
@@ -3231,6 +3233,7 @@ show_menu() {
     echo -e "${CYAN} 5) ${GREEN}🔒  Безопасность${NC}"
     echo -e "${CYAN} 6) ${GREEN}💾  Бэкап${NC}"
     echo -e "${CYAN} 7) ${GREEN}🔄  Обновление${NC}"
+    echo -e "${CYAN} 8) ${GREEN}🗑️  Удалить IPTV Manager${NC}"
     echo ""
     echo -e "${CYAN} 0) Выход${NC}"
     echo ""
@@ -3239,7 +3242,7 @@ show_menu() {
     case "$c" in
         1) menu_playlist ;; 2) menu_epg ;; 3) menu_server ;;
         4) menu_schedule ;; 5) menu_security ;; 6) menu_backup ;;
-        7) menu_update ;; 0) exit 0 ;; *) echo_info "Отмена"; return ;;
+        7) menu_update ;; 8) uninstall ;; 0) exit 0 ;; *) echo_info "Отмена"; return ;;
     esac
     PAUSE
 }
@@ -3273,15 +3276,20 @@ menu_epg() {
     print_header
     load_epg
     echo -e "${YELLOW}── 📺 Телепрограмма (EPG) ───────────────${NC}"
-    echo -e "  URL: ${CYAN}${EPG_URL:--}${NC}"
     echo ""
-    echo_color "✅ Готово! IPTV Manager настроен."
+    echo -e "${CYAN} 1) Настроить EPG${NC}"
+    echo -e "${CYAN} 2) Обновить EPG${NC}"
+    echo -e "${CYAN} 3) Удалить EPG${NC}"
     echo ""
-    echo -e "  ${CYAN}Админка:${NC}  http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
-    echo -e "  ${CYAN}Плейлист:${NC}  http://$LAN_IP:$IPTV_PORT/playlist.m3u"
-    echo -e "  ${CYAN}EPG:${NC}  http://$LAN_IP:$IPTV_PORT/epg.xml"
+    echo -e "${CYAN} 9) Назад    0) Выход${NC}"
     echo ""
-    echo -e "  ${YELLOW}Откройте админку: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi${NC}"
+    echo -ne "${YELLOW}> ${NC}"
+    read c </dev/tty
+    case "$c" in
+        1) setup_epg ;; 2) do_update_epg ;; 3) remove_epg ;;
+        9|0) return ;; *) echo_info "Отмена"; return ;;
+    esac
+    PAUSE
 }
 
 menu_server() {
