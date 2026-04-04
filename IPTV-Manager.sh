@@ -2245,6 +2245,41 @@ SCEOF
 stop_scheduler() { kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/null; rm -f /var/run/iptv-scheduler.pid /tmp/iptv-scheduler.sh; }
 
 # ==========================================
+# Watchdog — автоматически перезапускает сервер при падении
+# ==========================================
+setup_watchdog() {
+    cat > /usr/bin/iptv-watchdog.sh << 'WATCHDOG'
+#!/bin/sh
+while true; do
+    sleep 30
+    # Проверяем: admin.cgi существует И порт 8082 отвечает
+    if [ -f /www/iptv/cgi-bin/admin.cgi ]; then
+        if ! wget -q --timeout=3 -O /dev/null "http://127.0.0.1:8082/cgi-bin/admin.cgi" 2>/dev/null; then
+            /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1
+            sleep 5
+        fi
+    fi
+done
+WATCHDOG
+    chmod +x /usr/bin/iptv-watchdog.sh
+    # Добавляем в rc.local при загрузке
+    sed -i '/exit 0/d' /etc/rc.local 2>/dev/null
+    echo '# IPTV Manager watchdog' >> /etc/rc.local
+    echo 'nohup /usr/bin/iptv-watchdog.sh >/dev/null 2>&1 &' >> /etc/rc.local
+    echo 'exit 0' >> /etc/rc.local
+    # Убиваем старый, запускаем новый
+    kill $(pgrep -f "iptv-watchdog") 2>/dev/null
+    nohup /usr/bin/iptv-watchdog.sh >/dev/null 2>&1 &
+}
+
+remove_watchdog() {
+    kill $(pgrep -f "iptv-watchdog") 2>/dev/null
+    sed -i '/iptv-watchdog/d' /etc/rc.local 2>/dev/null
+    sed -i '/IPTV Manager watchdog/d' /etc/rc.local 2>/dev/null
+    rm -f /usr/bin/iptv-watchdog.sh
+}
+
+# ==========================================
 # HTTP-сервер
 # ==========================================
 start_http_server() {
@@ -2267,6 +2302,8 @@ start_http_server() {
     uhttpd -f -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" &
     echo $! > "$HTTPD_PID"
     date +%s > /tmp/iptv-started
+    # Start watchdog (auto-heal if server crashes)
+    setup_watchdog
     echo_success "Сервер запущен!"
     echo_info "Админка: http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
     echo_info "Плейлист: http://$LAN_IP:$IPTV_PORT/playlist.m3u"
@@ -2984,6 +3021,10 @@ express_setup() {
     echo -e "${YELLOW}[6/6] Устанавливаю LuCI плагин...${NC}"
     install_luci_plugin
     echo_success "✓ Плагин установлен"
+
+    echo -e "${YELLOW}[7/7] Запускаю Watchdog...${NC}"
+    setup_watchdog
+    echo_success "✓ Авто-восстановление сервера включено"
     
     echo ""
     echo_color "✅ Готово! IPTV Manager настроен."
