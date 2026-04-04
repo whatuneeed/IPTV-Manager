@@ -2262,14 +2262,16 @@ while true; do
 done
 WATCHDOG
     chmod +x /usr/bin/iptv-watchdog.sh
-    # Добавляем в rc.local при загрузке
-    sed -i '/exit 0/d' /etc/rc.local 2>/dev/null
-    echo '# IPTV Manager watchdog' >> /etc/rc.local
-    echo 'nohup /usr/bin/iptv-watchdog.sh >/dev/null 2>&1 &' >> /etc/rc.local
-    echo 'exit 0' >> /etc/rc.local
-    # Убиваем старый, запускаем новый
+    # Добавляем в rc.local при загрузке (только если ещё нет)
+    if ! grep -q "iptv-watchdog" /etc/rc.local 2>/dev/null; then
+        sed -i '/exit 0/d' /etc/rc.local 2>/dev/null
+        echo '# IPTV Manager watchdog' >> /etc/rc.local
+        echo '/usr/bin/iptv-watchdog.sh >/dev/null 2>&1 &' >> /etc/rc.local
+        echo 'exit 0' >> /etc/rc.local
+    fi
+    # Убиваем старый, запускаем новый (без nohup — нет на OpenWrt)
     kill $(pgrep -f "iptv-watchdog") 2>/dev/null
-    nohup /usr/bin/iptv-watchdog.sh >/dev/null 2>&1 &
+    /usr/bin/iptv-watchdog.sh >/dev/null 2>&1 &
 }
 
 remove_watchdog() {
