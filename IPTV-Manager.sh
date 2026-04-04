@@ -34,12 +34,13 @@ BLOCK_DURATION=300 # seconds to ban
 WHITELIST_FILE="$IPTV_DIR/ip_whitelist.txt"
 
 mkdir -p "$IPTV_DIR"
-# If running from /tmp, copy self to /etc/iptv first so symlink points to real file
+# If not saved at expected location, download and save self first
 real_script="/etc/iptv/IPTV-Manager.sh"
-if [ "$0" != "$real_script" ] && [ -f "$0" ]; then
-    cp "$0" "$real_script"
-    chmod +x "$real_script"
-    exec sh "$real_script" "$@"
+if [ ! -f "$real_script" ]; then
+    if wget -q --timeout=30 -O "$real_script" "https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh" 2>/dev/null; then
+        chmod +x "$real_script"
+        exec sh "$real_script"
+    fi
 fi
 ln -sf "$real_script" /usr/bin/iptv 2>/dev/null
 [ -f "$CONFIG_FILE" ] || touch "$CONFIG_FILE"
@@ -323,6 +324,8 @@ generate_cgi() {
     else
         echo "[]" > /www/iptv/channels.json
     fi
+    # Serve player.html too
+    [ -f /www/iptv/player.html ] || true
 
     # Опции групп для HTML
     local group_opts=""
@@ -1737,6 +1740,7 @@ loadFavorites();
 HTMLEND
 CGIEOF
     chmod +x /www/iptv/cgi-bin/admin.cgi
+    sed -i "s/IPTV_MANAGER_VERSION=\"\$IPTV_MANAGER_VERSION\"/IPTV_MANAGER_VERSION=\"$IPTV_MANAGER_VERSION\"/" /www/iptv/cgi-bin/admin.cgi
 
     # --- ECG прокси (стримит EPG из gz без распаковки в RAM) ---
     cat > /www/iptv/cgi-bin/epg.cgi << 'EPGEOF'
@@ -1759,6 +1763,7 @@ XMLEOF
 
     generate_server_html
     generate_player
+
 }
 
 generate_player() {
@@ -1850,6 +1855,7 @@ video{max-width:100%;max-height:100%;background:var(--bg);display:block}
 <input type="text" id="url-in" placeholder="Поток или URL плейлиста...">
 <button class="btn-play" onclick="handleUrl()">▶</button>
 <button class="btn-icon" onclick="togglePip()" title="Картинка в картинке">⧉</button>
+<button class="btn-icon" onclick="toggleTheme()" id="ttb" title="Тема">🌙</button>
 <button class="btn-icon" onclick="toggleFs()" title="Полный экран">⛶</button>
 </div>
 <div id="video-wrap">
@@ -2106,15 +2112,7 @@ function showEpg(id){
 
 function toggleFs(){
     if(document.fullscreenElement)document.exitFullscreen();
-    else if(window.parent!==window){
-        var iframes=window.parent.document.querySelectorAll('iframe');
-        for(var i=0;i<iframes.length;i++){
-            try{if(iframes[i].contentWindow===window){iframes[i].requestFullscreen().catch(function(){});return}}catch(e){}
-        }
-        document.documentElement.requestFullscreen().catch(function(){});
-    }else{
-        document.documentElement.requestFullscreen().catch(function(){});
-    }
+    else document.documentElement.requestFullscreen().catch(function(){});
 };
 }
 
@@ -2149,12 +2147,27 @@ function loadFavorites(){
         if(s)favorites=JSON.parse(s);
     }catch(e){}
 }
-
-// Theme sync with admin
+function toggleTheme(){
+    var d=document.documentElement,c=d.getAttribute('data-theme')||'dark';
+    var n=c==='light'?'dark':c==='dark'?'openwrt':'light';
+    d.setAttribute('data-theme',n);
+    var b=document.getElementById('ttb');
+    if(b)b.textContent=n==='light'?'☀️':n==='dark'?'🌙':'🟣';
+    try{localStorage.setItem('iptv-theme',n)}catch(e){}
+}
 (function(){
     try{
-        var t=localStorage.getItem('iptv-theme');
-        if(t==='dark'||t==='openwrt')document.documentElement.setAttribute('data-theme',t);
+        var t=localStorage.getItem('iptv-theme')||'dark';
+        if(t==='light'||t==='dark'||t==='openwrt'){
+            document.documentElement.setAttribute('data-theme',t);
+        }else{
+            document.documentElement.setAttribute('data-theme','dark');
+        }
+        var b=document.getElementById('ttb');
+        if(b){
+            var tt=document.documentElement.getAttribute('data-theme');
+            b.textContent=tt==='light'?'☀️':tt==='dark'?'🌙':'🟣';
+        }
     }catch(e){}
 })();
 
