@@ -189,7 +189,7 @@ h1{font-size:20px;margin-bottom:8px;color:var(--primary)}
 <p class="p">Управление IPTV сервером</p>
 </div>
 <script>
-var API='/cgi-bin/admin.cgi';
+var API='/cgi-bin/srv.cgi';
 if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt')}
 else{try{var t=localStorage.getItem('iptv-theme');if(t==='dark'||t==='openwrt')document.documentElement.setAttribute('data-theme',t)}catch(e){}}
 function qs(s){return document.querySelector(s)}
@@ -372,7 +372,7 @@ generate_cgi() {
     # --- CGI файл (без раскрытия переменных) ---
     cat > /www/iptv/cgi-bin/admin.cgi << 'CGIEOF'
 #!/bin/sh
-IPTV_MANAGER_VERSION="3.16"
+IPTV_MANAGER_VERSION="$IPTV_MANAGER_VERSION"
 PL="/etc/iptv/playlist.m3u"
 EC="/etc/iptv/iptv.conf"
 EGZ="/tmp/iptv-epg.xml.gz"
@@ -813,12 +813,6 @@ if [ -n "$ACTION" ]; then
                 > "$WHITELIST_FILE"
                 printf '{"status":"ok","message":"Список IP очищен (все разрешены)"}'
             fi ;;
-        server_status)
-            if [ -f /var/run/iptv-httpd.pid ] && kill -0 "$(cat /var/run/iptv-httpd.pid 2>/dev/null)" 2>/dev/null; then
-                printf '{"status":"ok","output":"running"}'
-            else
-                printf '{"status":"ok","output":"stopped"}'
-            fi ;;
         auto_update_keep)
             printf 'Content-Type: application/json\r\n\r\n{"status":"ok","message":"Применяю обновление..."}'
             (
@@ -961,11 +955,6 @@ pi="$PI"
 ei="$EI"
 plu="$PLU"
 elu="$ELU"
-
-group_opts=""
-if [ -n "$groups" ]; then
-    group_opts=$(echo "$groups" | while IFS= read -r g; do [ -n "$g" ] && echo "<option value=\"$g\">$g</option>"; done)
-fi
 
 cat << HTMLEND
 <!DOCTYPE html>
@@ -1783,7 +1772,9 @@ generate_player() {
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0f172a;--panel:#1e293b;--border:#334155;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--accent:#3b82f6;--accent2:#2563eb;--hover:#334155;--active:#1e3a5f;--green:#22c55e;--red:#ef4444}
+:root{--bg:#f0f2f5;--panel:#fff;--border:#e0e0e0;--text:#1a1a2e;--text2:#666;--text3:#888;--accent:#1a73e8;--accent2:#1557b0;--hover:#f0f2f5;--active:#e8f0fe;--green:#1e8e3e;--red:#d93025}
+[data-theme="dark"]{--bg:#0a0e1a;--panel:#1e293b;--border:#334155;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--accent:#3b82f6;--accent2:#2563eb;--hover:#334155;--active:#1e3a5f;--green:#22c55e;--red:#ef4444}
+[data-theme="openwrt"]{--bg:#1a1b26;--panel:#24283b;--border:#3b4261;--text:#c0caf5;--text2:#9aa5ce;--text3:#565f89;--accent:#7aa2f7;--accent2:#6893db;--hover:#292e42;--active:#1f2335;--green:#9ece6a;--red:#f7768e}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;height:100vh;overflow:hidden}
 #app{display:flex;height:100vh}
 #main{flex:1;display:flex;flex-direction:column;min-width:0}
@@ -2115,7 +2106,16 @@ function showEpg(id){
 
 function toggleFs(){
     if(document.fullscreenElement)document.exitFullscreen();
-    else document.documentElement.requestFullscreen().catch(function(){});
+    else if(window.parent!==window){
+        var iframes=window.parent.document.querySelectorAll('iframe');
+        for(var i=0;i<iframes.length;i++){
+            try{if(iframes[i].contentWindow===window){iframes[i].requestFullscreen().catch(function(){});return}}catch(e){}
+        }
+        document.documentElement.requestFullscreen().catch(function(){});
+    }else{
+        document.documentElement.requestFullscreen().catch(function(){});
+    }
+};
 }
 
 function togglePip(){
@@ -2149,6 +2149,14 @@ function loadFavorites(){
         if(s)favorites=JSON.parse(s);
     }catch(e){}
 }
+
+// Theme sync with admin
+(function(){
+    try{
+        var t=localStorage.getItem('iptv-theme');
+        if(t==='dark'||t==='openwrt')document.documentElement.setAttribute('data-theme',t);
+    }catch(e){}
+})();
 
 var params=new URLSearchParams(window.location.search);
 var sUrl=params.get('url'),sIdx=params.get('idx'),pUrl=params.get('pl');
