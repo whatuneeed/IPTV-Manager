@@ -245,13 +245,8 @@ ACT=$(echo "$QUERY_STRING" | sed -n 's/.*action=\([^&]*\).*/\1/p')
 case "$ACTION$ACT" in
     *start*)
         JSON
-        kill $(pgrep -f "uhttpd.*8082") 2>/dev/null
-        sleep 1
-        mkdir -p /www/iptv /www/iptv/cgi-bin
-        [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null
-        [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml 2>/dev/null
-        uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
         printf '{"ok":true}'
+        /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1 &
         ;;
     *stop*)
         JSON
@@ -261,7 +256,7 @@ case "$ACTION$ACT" in
         ;;
     *status*)
         JSON
-        if wget -q --spider --timeout=2 http://127.0.0.1:8082/ 2>/dev/null; then
+        if [ -f /www/iptv/cgi-bin/admin.cgi ] && wget -q --spider --timeout=2 http://127.0.0.1:8082/ 2>/dev/null; then
             printf '{"ok":true,"running":true}'
         else
             printf '{"ok":true,"running":false}'
@@ -2247,7 +2242,8 @@ stop_scheduler() { kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/nu
 # HTTP-сервер
 # ==========================================
 start_http_server() {
-    mkdir -p /www/iptv/cgi-bin
+    mkdir -p /www/iptv /www/iptv/cgi-bin /www/cgi-bin
+    rm -f /www/iptv/admin.cgi /www/iptv/channels.json /www/iptv/player.html /www/cgi-bin/srv.cgi
     cp "$IPTV_DIR/server.html" /www/iptv/server.html 2>/dev/null || true
     [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
     generate_cgi
