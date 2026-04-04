@@ -2335,6 +2335,8 @@ start_http_server() {
         echo_error "Ошибка: uhttpd не запустился. Проверьте: logread | grep uhttpd"
     fi
 }
+
+stop_http_server() {
     kill $(cat "$HTTPD_PID" 2>/dev/null) 2>/dev/null
     kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
     rm -f "$HTTPD_PID"
