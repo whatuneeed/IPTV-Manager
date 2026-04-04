@@ -2250,6 +2250,8 @@ stop_scheduler() { kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/nu
 setup_watchdog() {
     cat > /usr/bin/iptv-watchdog.sh << 'WATCHDOG'
 #!/bin/sh
+# Игнорировать сигнал закрытия терминала (чтобы жить после установки)
+trap "" HUP INT QUIT
 while true; do
     sleep 20
     # Проверяем: admin.cgi существует И порт 8082 отвечает
@@ -2260,7 +2262,7 @@ while true; do
             mkdir -p /www/iptv /www/iptv/cgi-bin
             [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null
             [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml 2>/dev/null
-            uhttpd -p "0.0.0.0:8082" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
+            ( trap "" HUP INT QUIT; uhttpd -p "0.0.0.0:8082" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 ) &
             sleep 3
         fi
     fi
@@ -2309,7 +2311,8 @@ start_http_server() {
     sleep 2
     # Record server start time for uptime tracking
     date +%s > "$STARTUP_TIME"
-    uhttpd -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
+    # Launch server in a subshell immune to terminal exit (SIGHUP)
+    ( trap "" HUP INT QUIT; uhttpd -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 ) &
     echo $! > "$HTTPD_PID"
     date +%s > /tmp/iptv-started
     # Verify server responds (same as working case start))
@@ -2332,8 +2335,6 @@ start_http_server() {
         echo_error "Ошибка: uhttpd не запустился. Проверьте: logread | grep uhttpd"
     fi
 }
-}
-stop_http_server() {
     kill $(cat "$HTTPD_PID" 2>/dev/null) 2>/dev/null
     kill $(pgrep -f "uhttpd.*:$IPTV_PORT" 2>/dev/null) 2>/dev/null
     rm -f "$HTTPD_PID"
