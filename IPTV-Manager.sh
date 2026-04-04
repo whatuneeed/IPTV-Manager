@@ -3230,7 +3230,7 @@ show_menu() {
     echo -e " ${CYAN} 5)${NC} ${GREEN}🔒  Безопасность${NC}"
     echo -e " ${CYAN} 6)${NC} ${GREEN}💾  Бэкап${NC}"
     echo -e " ${CYAN} 7)${NC} ${GREEN}🔄  Обновление${NC}"
-    echo -e " ${CYAN} 8)${NC} ${GREEN}🗑  Удалить IPTV Manager${NC}"
+    echo -e " ${CYAN} 8)${NC} ${GREEN}🗑️   Удалить IPTV Manager${NC}"
     echo ""
     echo -e "${CYAN} 0) Выход${NC}"
     echo ""
