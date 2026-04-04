@@ -2251,12 +2251,17 @@ setup_watchdog() {
     cat > /usr/bin/iptv-watchdog.sh << 'WATCHDOG'
 #!/bin/sh
 while true; do
-    sleep 30
+    sleep 20
     # Проверяем: admin.cgi существует И порт 8082 отвечает
     if [ -f /www/iptv/cgi-bin/admin.cgi ]; then
         if ! wget -q --timeout=3 -O /dev/null "http://127.0.0.1:8082/cgi-bin/admin.cgi" 2>/dev/null; then
-            /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1
-            sleep 5
+            kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null 2>/dev/null
+            sleep 1
+            mkdir -p /www/iptv /www/iptv/cgi-bin
+            [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null
+            [ -f /etc/iptv/epg.xml ] && cp /etc/iptv/epg.xml /www/iptv/epg.xml 2>/dev/null
+            uhttpd -p "0.0.0.0:8082" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
+            sleep 3
         fi
     fi
 done
@@ -2269,9 +2274,16 @@ WATCHDOG
         echo '/usr/bin/iptv-watchdog.sh >/dev/null 2>&1 &' >> /etc/rc.local
         echo 'exit 0' >> /etc/rc.local
     fi
-    # Убиваем старый, запускаем новый (без nohup — нет на OpenWrt)
+    # Убиваем старый watchdog и запускаем новый
     kill $(pgrep -f "iptv-watchdog") 2>/dev/null
+    sleep 1
     /usr/bin/iptv-watchdog.sh >/dev/null 2>&1 &
+    sleep 1
+    if [ -n "$(pgrep -f 'iptv-watchdog')" ]; then
+        echo "Watchdog запущен"
+    else
+        echo "⚠️  Предупреждение: watchdog не запустился"
+    fi
 }
 
 remove_watchdog() {
@@ -3510,28 +3522,33 @@ menu_uninstall() {
 case "$1" in
     start)
         echo "=== Запуск IPTV-сервера ==="
-        # Kill any existing uhttpd on port 8082
         kill -9 $(pgrep -f "uhttpd.*8082") 2>/dev/null 2>/dev/null
         sleep 2
-        # Generate CGI and prepare dirs
         generate_cgi
+        generate_player
         generate_srv_cgi
         mkdir -p /www/iptv/cgi-bin
         [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
-        # Start in background (no nohup on BusyBox)
+        # Start uhttpd directly (no nohup - BusyBox doesn't have it)
         uhttpd -p "0.0.0.0:$IPTV_PORT" -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &
-        sleep 3
-        # Verify it actually started
-        if [ -n "$(pgrep -f 'uhttpd.*8082')" ]; then
-            local pid=$(pgrep -f 'uhttpd.*8082' | head -1)
-            echo "$pid" > /var/run/iptv-httpd.pid
-            echo "Сервер запущен (PID: $pid)"
+        # Verify server actually responds (not just that process exists)
+        _tries=0
+        while [ "$_tries" -lt 15 ]; do
+            _tries=$((_tries + 1))
+            sleep 1
+            if wget -q --timeout=1 -O /dev/null "http://127.0.0.1:$IPTV_PORT/" 2>/dev/null; then
+                break
+            fi
+        done
+        if wget -q --timeout=2 -O /dev/null "http://127.0.0.1:$IPTV_PORT/" 2>/dev/null; then
+            _pid=$(pgrep -f "uhttpd.*8082" | head -1)
+            echo "$_pid" > /var/run/iptv-httpd.pid
+            echo "Сервер запущен (${_tries} попыток/10, PID: $_pid)"
+            setup_watchdog
         else
-            echo "Ошибка: uhttpd не запустился!"
+            echo "Ошибка: uhttpd упал сразу! Проверьте: logread | grep uhttpd"
             exit 1
         fi
-        # Start watchdog
-        setup_watchdog
         exit 0
         ;;
     stop)
