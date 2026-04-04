@@ -34,6 +34,7 @@ BLOCK_DURATION=300 # seconds to ban
 WHITELIST_FILE="$IPTV_DIR/ip_whitelist.txt"
 
 mkdir -p "$IPTV_DIR"
+ln -sf /etc/iptv/IPTV-Manager.sh /usr/bin/iptv 2>/dev/null
 [ -f "$CONFIG_FILE" ] || touch "$CONFIG_FILE"
 [ -f "$EPG_CONFIG" ] || touch "$EPG_CONFIG"
 [ -f "$SCHEDULE_FILE" ] || touch "$SCHEDULE_FILE"
@@ -2229,7 +2230,6 @@ stop_scheduler() { kill $(cat /var/run/iptv-scheduler.pid 2>/dev/null) 2>/dev/nu
 # ==========================================
 start_http_server() {
     mkdir -p /www/iptv/cgi-bin
-    ln -sf /etc/iptv/IPTV-Manager.sh /usr/bin/iptv 2>/dev/null
     cp "$IPTV_DIR/server.html" /www/iptv/server.html 2>/dev/null || true
     [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
     generate_cgi
@@ -3203,7 +3203,6 @@ show_menu() {
     local srv_running=false
     [ -f "$HTTPD_PID" ] && kill -0 "$(cat "$HTTPD_PID" 2>/dev/null)" 2>/dev/null && srv_running=true
     if [ "$has_pl" = "false" ] && [ "$srv_running" = "false" ]; then
-        echo ""
         echo -e "${YELLOW}── 🚀 Экспресс-настройка ──────────────${NC}"
         echo "  Автоматическая установка за 30 секунд"
         echo ""
@@ -3219,7 +3218,6 @@ show_menu() {
         PAUSE
         return
     fi
-    
     echo ""
     echo -e "${YELLOW}── 💡 Главное меню ────────────────────────${NC}"
     echo -e "  📌 ${CYAN}Админка:${NC}  http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
