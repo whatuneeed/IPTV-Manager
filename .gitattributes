@@ -1,5 +1,2 @@
-# Force LF line endings for all scripts to prevent Windows CRLF issues
+﻿* text=auto
 *.sh text eol=lf
-
-# Force UTF-8 without BOM
-*.sh encoding=utf-8
