@@ -34,7 +34,14 @@ BLOCK_DURATION=300 # seconds to ban
 WHITELIST_FILE="$IPTV_DIR/ip_whitelist.txt"
 
 mkdir -p "$IPTV_DIR"
-ln -sf /etc/iptv/IPTV-Manager.sh /usr/bin/iptv 2>/dev/null
+# If running from /tmp, copy self to /etc/iptv first so symlink points to real file
+real_script="/etc/iptv/IPTV-Manager.sh"
+if [ "$0" != "$real_script" ] && [ -f "$0" ]; then
+    cp "$0" "$real_script"
+    chmod +x "$real_script"
+    exec sh "$real_script" "$@"
+fi
+ln -sf "$real_script" /usr/bin/iptv 2>/dev/null
 [ -f "$CONFIG_FILE" ] || touch "$CONFIG_FILE"
 [ -f "$EPG_CONFIG" ] || touch "$EPG_CONFIG"
 [ -f "$SCHEDULE_FILE" ] || touch "$SCHEDULE_FILE"
@@ -3223,14 +3230,14 @@ show_menu() {
     echo -e "  📌 ${CYAN}Плейлист:${NC} http://$LAN_IP:$IPTV_PORT/playlist.m3u"
     echo -e "  📌 ${CYAN}EPG:${NC}      http://$LAN_IP:$IPTV_PORT/epg.xml"
     echo ""
-    echo -e " ${CYAN} 1)${NC} ${GREEN}📡  Плейлист${NC}"
-    echo -e " ${CYAN} 2)${NC} ${GREEN}📺  Телепрограмма${NC}"
-    echo -e " ${CYAN} 3)${NC} ${GREEN}🔧  Сервер${NC}"
-    echo -e " ${CYAN} 4)${NC} ${GREEN}⏰  Расписание${NC}"
-    echo -e " ${CYAN} 5)${NC} ${GREEN}🔒  Безопасность${NC}"
-    echo -e " ${CYAN} 6)${NC} ${GREEN}💾  Бэкап${NC}"
-    echo -e " ${CYAN} 7)${NC} ${GREEN}🔄  Обновление${NC}"
-    echo -e " ${CYAN} 8)${NC} ${GREEN}🗑️   Удалить IPTV Manager${NC}"
+    echo -e "  ${CYAN}1)${NC} ${GREEN}📡  Плейлист${NC}"
+    echo -e "  ${CYAN}2)${NC} ${GREEN}📺  Телепрограмма${NC}"
+    echo -e "  ${CYAN}3)${NC} ${GREEN}🔧  Сервер${NC}"
+    echo -e "  ${CYAN}4)${NC} ${GREEN}⏰  Расписание${NC}"
+    echo -e "  ${CYAN}5)${NC} ${GREEN}🔒  Безопасность${NC}"
+    echo -e "  ${CYAN}6)${NC} ${GREEN}💾  Бэкап${NC}"
+    echo -e "  ${CYAN}7)${NC} ${GREEN}🔄  Обновление${NC}"
+    echo -e "  ${CYAN}8)${NC} ${GREEN}🗑️   Удалить IPTV Manager${NC}"
     echo ""
     echo -e "${CYAN} 0) Выход${NC}"
     echo ""
