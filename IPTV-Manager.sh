@@ -94,11 +94,6 @@ _ip_whitelist() {
     grep -q "^${ip}$" "$WHITELIST_FILE" 2>/dev/null
 }
 
-# Clean old/invalid CGI before generating
-rm -f /www/iptv/admin.cgi /www/iptv/channels.json /www/iptv/playlist.m3u /www/iptv/epg.xml /www/iptv/epg.cgi
-rm -f /www/iptv/player.html /www/iptv/epg.json
-rm -f /www/cgi-bin/srv.cgi
-
 # Download EPG from URL → /tmp/iptv-epg.xml.gz
 # Usage: _dl_epg "https://..."  (returns 0 on success, sets $EPG_GZ_SZ to human-readable size)
 _dl_epg() {
@@ -2109,7 +2104,6 @@ function showEpg(id){
 function toggleFs(){
     if(document.fullscreenElement)document.exitFullscreen();
     else document.documentElement.requestFullscreen().catch(function(){});
-};
 }
 
 function togglePip(){
