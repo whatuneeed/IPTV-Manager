@@ -723,9 +723,8 @@ if [ -n "$ACTION" ]; then
                 printf '{"status":"error","message":"Нет команды"}'
             fi ;;
         server_start)
-            # Send response first, then kill + restart uhttpd in background
             printf '{"status":"ok"}'
-            (sleep 1; kill $(pgrep -f "uhttpd.*8082") 2>/dev/null; sleep 1; mkdir -p /www/iptv/cgi-bin; [ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null; nohup uhttpd -p 0.0.0.0:8082 -h /www/iptv -x /www/iptv/cgi-bin -i ".cgi=/bin/sh" </dev/null >/dev/null 2>&1 &) &
+            (sleep 1; /etc/iptv/IPTV-Manager.sh start >/dev/null 2>&1) &
             ;;
         server_stop)
             # Send response first, then kill uhttpd after 3s (gives CGI time to finish)
@@ -1741,6 +1740,7 @@ HTMLEND
 CGIEOF
     chmod +x /www/iptv/cgi-bin/admin.cgi
     sed -i "s/IPTV_MANAGER_VERSION=\"\$IPTV_MANAGER_VERSION\"/IPTV_MANAGER_VERSION=\"$IPTV_MANAGER_VERSION\"/" /www/iptv/cgi-bin/admin.cgi
+    sed -i "s/IPTV_MANAGER_VERSION=\"3.16\"/IPTV_MANAGER_VERSION=\"$IPTV_MANAGER_VERSION\"/" /www/iptv/cgi-bin/admin.cgi
 
     # --- ECG прокси (стримит EPG из gz без распаковки в RAM) ---
     cat > /www/iptv/cgi-bin/epg.cgi << 'EPGEOF'
@@ -2777,7 +2777,7 @@ INITEOF
         rm -f /usr/share/luci/menu.d/luci-app-iptv-manager.json
         rm -f /usr/share/rpcd/acl.d/luci-app-iptv-manager.json
         local luci_base="https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/luci-app-iptv-manager"
-        local luci_files="htdocs/luci-static/resources/view/iptv-manager/iptv.js htdocs/luci-static/resources/view/iptv-manager/player.js htdocs/luci-static/resources/view/iptv-manager/server.js htdocs/luci-static/resources/view/iptv-manager/srv.cgi htdocs/luci-static/resources/view/iptv-manager/srv.html root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
+        local luci_files="htdocs/luci-static/resources/view/iptv-manager/iptv.js htdocs/luci-static/resources/view/iptv-manager/player.js htdocs/luci-static/resources/view/iptv-manager/server.js root/usr/share/luci/menu.d/luci-app-iptv-manager.json root/usr/share/rpcd/acl.d/luci-app-iptv-manager.json root/etc/uci-defaults/99-luci-iptv-manager"
         local total=0
         local ok=0
         for f in $luci_files; do
