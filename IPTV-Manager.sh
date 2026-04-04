@@ -3218,7 +3218,6 @@ show_menu() {
         PAUSE
         return
     fi
-    echo ""
     echo -e "${YELLOW}── 💡 Главное меню ────────────────────────${NC}"
     echo -e "  📌 ${CYAN}Админка:${NC}  http://$LAN_IP:$IPTV_PORT/cgi-bin/admin.cgi"
     echo -e "  📌 ${CYAN}Плейлист:${NC} http://$LAN_IP:$IPTV_PORT/playlist.m3u"
