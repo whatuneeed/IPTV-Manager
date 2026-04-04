@@ -266,9 +266,7 @@ case "$ACTION$ACT" in
         ;;
     *status*)
         JSON
-        if [ -f $PID ] && kill -0 "$(cat $PID 2>/dev/null)" 2>/dev/null; then
-            printf '{"ok":true,"running":true}'
-        elif wget -q -O /dev/null --timeout=2 http://127.0.0.1:8082/ 2>/dev/null; then
+        if wget -q --spider --timeout=2 http://127.0.0.1:8082/ 2>/dev/null; then
             printf '{"ok":true,"running":true}'
         else
             printf '{"ok":true,"running":false}'
@@ -1762,8 +1760,6 @@ EPGEOF
 XMLEOF
 
     generate_server_html
-    generate_player
-
 }
 
 generate_player() {
@@ -2261,6 +2257,7 @@ start_http_server() {
     cp "$IPTV_DIR/server.html" /www/iptv/server.html 2>/dev/null || true
     [ -f "$PLAYLIST_FILE" ] && cp "$PLAYLIST_FILE" /www/iptv/playlist.m3u || echo "#EXTM3U" > /www/iptv/playlist.m3u
     generate_cgi
+    generate_player 2>/dev/null
     generate_srv_cgi
     if [ -f "$HTTPD_PID" ] && kill -0 $(cat "$HTTPD_PID") 2>/dev/null; then
         echo_success "Сервер обновлён: http://$LAN_IP:$IPTV_PORT/"
