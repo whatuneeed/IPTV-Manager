@@ -459,15 +459,57 @@ menu_update() {
 
 menu_uninstall() {
     print_header
-    echo -e "${YELLOW}── ❌ Удаление ────────────────────────${NC}"
-    echo -ne "${YELLOW}Удалить всё? (y/N): ${NC}"; read ans </dev/tty
+    echo -e "${YELLOW}── ❌ Полное удаление ───────────────────${NC}"
+    echo -e "  Будет удалено:"
+    echo -e "  • Модули: /usr/share/iptv-manager/"
+    echo -e "  • Конфиги: /etc/iptv/"
+    echo -e "  • Runtime: /www/iptv/"
+    echo -e "  • LuCI views: /www/luci-static/resources/view/iptv-manager/"
+    echo -e "  • LuCI menu/ACL"
+    echo -e "  • Init скрипт, watchdog, symlink"
+    echo ""
+    echo -ne "${YELLOW}Удалить IPTV Manager полностью? (y/N): ${NC}"; read ans </dev/tty
     case "$ans" in
-        y|Y) server_stop; scheduler_stop; remove_watchdog
-             rm -rf "$IPTV_DIR" /www/iptv
-             rm -f /var/run/iptv-httpd.pid /var/run/iptv-scheduler.pid
-             rm -f /usr/bin/iptv-watchdog.sh /usr/bin/iptv
-             [ -f /etc/init.d/iptv-manager ] && { /etc/init.d/iptv-manager disable 2>/dev/null || true; rm -f /etc/init.d/iptv-manager; }
-             echo_success "IPTV Manager удалён" ;;
+        y|Y)
+            echo_info "Останавливаем сервисы..."
+            server_stop 2>/dev/null
+            scheduler_stop 2>/dev/null
+            remove_watchdog 2>/dev/null
+
+            # Удаляем модули
+            rm -rf /usr/share/iptv-manager
+
+            # Удаляем конфиги и runtime
+            rm -rf "$IPTV_DIR" /www/iptv
+
+            # Удаляем LuCI файлы
+            rm -rf /www/luci-static/resources/view/iptv-manager
+            rm -f /usr/share/luci/menu.d/luci-app-iptv-manager.json
+            rm -f /usr/share/rpcd/acl.d/luci-app-iptv-manager.json
+
+            # Удаляем CGI файлы
+            rm -f /www/cgi-bin/srv.cgi /www/cgi-bin/srv.html
+
+            # Удаляем init и конфиги
+            rm -f /etc/init.d/iptv-manager
+            rm -f /etc/uci-defaults/99-luci-iptv-manager
+            rm -f /etc/config/iptv_uhttpd
+
+            # Удаляем временные файлы
+            rm -f /var/run/iptv-httpd.pid /var/run/iptv-scheduler.pid
+            rm -f /tmp/iptv-*.tmp /tmp/iptv-*.tar.gz /tmp/iptv-*.m3u /tmp/iptv-*.*
+            rm -f /tmp/epg-dl.tmp /tmp/rf_tmp /tmp/iptv-blocked-*
+
+            # Удаляем symlink и watchdog
+            rm -f /usr/bin/iptv-watchdog.sh /usr/bin/iptv
+
+            # Перезапускаем rpcd
+            /etc/init.d/rpcd restart 2>/dev/null || true
+
+            echo_success "IPTV Manager полностью удалён"
+            echo_info "Для выхода введите Enter"
+            ;;
+        *) echo_info "Отмена"; return ;;
     esac
 }
 

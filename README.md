@@ -99,7 +99,22 @@ luci-app-iptv-manager/root/usr/share/iptv-manager/
 
 ## Установка
 
-### Через LuCI (рекомендуется)
+### Быстрая установка (одна команда)
+
+```sh
+wget -q -O - https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/install.sh | sh
+```
+
+Скрипт автоматически:
+- Скачает все файлы с GitHub
+- Расставит по правильным путям
+- Включит автозапуск и настроит LuCI
+- Запустит сервер
+- **Удалит все временные файлы** после установки
+
+После установки: **Services → IPTV Manager** в LuCI, или `iptv` в SSH.
+
+### Через LuCI (для разработчиков)
 
 ```sh
 # Собрать пакет из исходников
