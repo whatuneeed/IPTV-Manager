@@ -42,7 +42,8 @@ is_installed() {
 get_status() {
     if is_installed; then
         local ch=0
-        [ -f "$IPTV_DIR/playlist.m3u" ] && ch=$(grep -c "^#EXTINF" "$IPTV_DIR/playlist.m3u" 2>/dev/null || echo 0)
+        [ -f "$IPTV_DIR/playlist.m3u" ] && ch=$(grep -c "^#EXTINF" "$IPTV_DIR/playlist.m3u" 2>/dev/null)
+        [ -z "$ch" ] && ch=0
         local srv="❌ Остановлен"
         pgrep -f "uhttpd.*8082" >/dev/null 2>&1 && srv="✅ Запущен"
         echo "$ch|$srv"
@@ -248,7 +249,7 @@ generate_and_start() {
 full_uninstall() {
     echo_step "Полное удаление IPTV Manager"
     echo -ne "${YELLOW}Удалить IPTV Manager полностью? (y/N): ${NC}"
-    read ans
+    read ans </dev/tty
     case "$ans" in y|Y) ;; *) echo_info "Отмена"; return ;; esac
 
     echo_info "Остановка сервисов..."
