@@ -15,6 +15,7 @@ REPO="whatuneeed/IPTV-Manager"
 BRANCH="main"
 RAW="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
 TMP_DIR="/tmp/iptv-install-$$"
+IPTV_DIR="/etc/iptv"
 
 # Cleanup function — removes ALL temporary files
 cleanup() {
@@ -194,6 +195,20 @@ echo_success "CLI: /usr/bin/iptv"
 # Post-install
 # ============================
 echo_step "Настройка"
+
+# Create empty playlist if missing
+[ -f "$IPTV_DIR/playlist.m3u" ] || {
+    mkdir -p "$IPTV_DIR"
+    echo "#EXTM3U" > "$IPTV_DIR/playlist.m3u"
+}
+
+# Generate CGI scripts immediately (so admin.cgi and player.html exist before server starts)
+mkdir -p /www/iptv /www/iptv/cgi-bin
+[ -f /etc/iptv/playlist.m3u ] && cp /etc/iptv/playlist.m3u /www/iptv/playlist.m3u 2>/dev/null
+if [ -f /usr/share/iptv-manager/IPTV-Manager.sh ]; then
+    . /usr/share/iptv-manager/IPTV-Manager.sh --server 2>/dev/null || true
+    echo_success "CGI-скрипты сгенерированы"
+fi
 
 # Enable init script
 /etc/init.d/iptv-manager enable 2>/dev/null && echo_success "Автозапуск включён"

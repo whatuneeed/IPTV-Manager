@@ -20,8 +20,11 @@ HTTPD_PID="/var/run/iptv-httpd.pid"
 IPTV_PORT="${IPTV_PORT:-8082}"
 
 start_service() {
-    # Check if playlist exists
-    [ -f "$IPTV_DIR/playlist.m3u" ] || return 1
+    # Create playlist if missing (allow server to start even without config)
+    [ -f "$IPTV_DIR/playlist.m3u" ] || {
+        mkdir -p "$IPTV_DIR"
+        echo "#EXTM3U" > "$IPTV_DIR/playlist.m3u"
+    }
 
     # Prepare directories
     mkdir -p "$WWW_DIR" "$CGI_DIR" /www/cgi-bin
