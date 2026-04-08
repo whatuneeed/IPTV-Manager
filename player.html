@@ -22,10 +22,28 @@ body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSy
 .btn-icon{background:var(--hover);color:var(--text2);padding:7px 10px;font-size:16px}.btn-icon:hover{background:var(--border);color:var(--text)}
 #video-wrap{flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg);position:relative;min-height:0;overflow:hidden}
 video{max-width:100%;max-height:100%;background:var(--bg);display:block}
+video.ar-16-9{aspect-ratio:16/9;width:100%;height:auto;max-height:100%}
+video.ar-4-3{aspect-ratio:4/3;width:100%;height:auto;max-height:100%}
+video.ar-fill{width:100%;height:100%;object-fit:cover}
+video.ar-auto{width:auto;height:auto;max-width:100%;max-height:100%}
 #epg-overlay{position:absolute;bottom:0;left:0;right:0;background:rgba(15,23,42,.92);padding:12px 16px;max-height:120px;overflow-y:auto;backdrop-filter:blur(8px);display:none}
 #epg-overlay.show{display:block}
-#epg-overlay .epg-now{font-size:13px;color:var(--green);font-weight:600;margin-bottom:4px}
+#epg-overlay .epg-now{font-size:13px;color:var(--green);font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px}
 #epg-overlay .epg-next{font-size:12px;color:var(--text3)}
+#epg-overlay .epg-archive-btn{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-weight:600;white-space:nowrap}
+#epg-overlay .epg-archive-btn:hover{background:var(--accent2)}
+#epg-overlay .epg-archive-btn:disabled{opacity:.5;cursor:default}
+#catchup-bar{position:absolute;bottom:120px;left:0;right:0;background:rgba(15,23,42,.95);padding:10px 16px;display:none;backdrop-filter:blur(8px)}
+#catchup-bar.show{display:block}
+#catchup-bar .catchup-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+#catchup-bar .catchup-title{font-size:13px;color:var(--text);font-weight:600}
+#catchup-bar .catchup-close{background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer}
+#catchup-bar .catchup-timeline{display:flex;gap:2px;overflow-x:auto;padding:4px 0}
+#catchup-bar .catchup-item{flex:0 0 auto;width:120px;padding:6px 8px;background:rgba(255,255,255,.08);border-radius:4px;cursor:pointer;font-size:11px;color:var(--text2);transition:all .15s}
+#catchup-bar .catchup-item:hover{background:rgba(255,255,255,.15);color:var(--text)}
+#catchup-bar .catchup-item.active{background:var(--accent);color:#fff}
+#catchup-bar .catchup-item .catchup-time{font-size:10px;color:var(--text3);margin-bottom:2px}
+#catchup-bar .catchup-item.active .catchup-time{color:rgba(255,255,255,.7)}
 #error{display:none;position:absolute;text-align:center;padding:40px}
 #error h2{margin-bottom:8px;color:var(--red)}
 #error p{color:var(--text3);font-size:14px}
@@ -47,6 +65,31 @@ video{max-width:100%;max-height:100%;background:var(--bg);display:block}
 .fav-star{color:#64748b;font-size:14px;cursor:pointer;flex-shrink:0;transition:color .15s}
 .fav-star.on{color:#f59e0b}
 .fav-star:hover{color:#fbbf24}
+/* EPG Grid */
+#epg-grid{position:fixed;top:0;left:0;right:0;bottom:0;background:var(--panel);z-index:200;display:none;flex-direction:column}
+#epg-grid.show{display:flex}
+#epg-grid-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--panel)}
+#epg-grid-head h3{font-size:16px;font-weight:600}
+#epg-grid-close{background:none;border:none;font-size:24px;cursor:pointer;color:var(--text);padding:4px 8px}
+#epg-grid-body{flex:1;overflow-y:auto;padding:8px}
+/* Remote control */
+#remote-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.95);z-index:300;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px}
+#remote-overlay.show{display:flex}
+#remote-overlay .remote-title{font-size:14px;color:var(--text3)}
+.remote-btn{width:120px;height:120px;border-radius:50%;background:var(--accent);color:#fff;border:none;font-size:32px;cursor:pointer;transition:all .15s}
+.remote-btn:hover{background:var(--accent2);transform:scale(1.05)}
+.remote-btn:active{transform:scale(.95)}
+.remote-row{display:flex;gap:24px;align-items:center}
+.remote-close{position:absolute;top:16px;right:16px;background:none;border:none;color:var(--text3);font-size:24px;cursor:pointer}
+.epg-ch-row{display:flex;gap:4px;margin-bottom:4px;align-items:stretch}
+.epg-ch-label{width:100px;flex-shrink:0;padding:6px 8px;font-size:11px;font-weight:600;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border-right:2px solid var(--border)}
+.epg-programs{flex:1;display:flex;gap:2px;overflow-x:auto}
+.epg-prog{flex:0 0 auto;padding:6px 10px;background:var(--hover);border-radius:4px;font-size:11px;cursor:pointer;min-width:80px;transition:all .15s;border-left:3px solid transparent}
+.epg-prog:hover{background:var(--active)}
+.epg-prog.now{background:var(--accent);color:#fff;border-left-color:var(--green)}
+.epg-prog.past{opacity:.5}
+.epg-prog .epg-prog-time{font-weight:600;font-size:10px;margin-bottom:2px}
+.epg-prog .epg-prog-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #ch-list{flex:1;overflow-y:auto}
 .ch{display:flex;align-items:center;gap:8px;padding:7px 12px;cursor:pointer;border-bottom:1px solid rgba(51,65,85,.4);transition:background .12s}
 .ch:hover{background:var(--hover)}
@@ -76,7 +119,10 @@ video{max-width:100%;max-height:100%;background:var(--bg);display:block}
 <span class="now" id="now-ch"></span>
 <input type="text" id="url-in" placeholder="Поток или URL плейлиста...">
 <button class="btn-play" onclick="handleUrl()">▶</button>
+<button class="btn-icon" onclick="toggleRemote()" title="Режим пульта" id="remote-btn">📱</button>
+<button class="btn-icon" onclick="toggleAr()" title="Соотношение сторон" id="ar-btn">⬜</button>
 <button class="btn-icon" onclick="togglePip()" title="Картинка в картинке">⧉</button>
+<button class="btn-icon" onclick="openEpgGrid()" title="Телепрограмма">📺</button>
 <button class="btn-icon" onclick="toggleFs()" title="Полный экран">⛶</button>
 <button class="btn-icon" onclick="toggleTheme()" id="ttb" title="Тема">☀️</button>
 </div>
@@ -85,6 +131,39 @@ video{max-width:100%;max-height:100%;background:var(--bg);display:block}
 <div id="epg-overlay">
 <div class="epg-now" id="epg-now"></div>
 <div class="epg-next" id="epg-next"></div>
+</div>
+<div id="catchup-bar">
+<div class="catchup-header">
+<span class="catchup-title" id="catchup-title">Архив передач</span>
+<button class="catchup-close" onclick="closeCatchup()">✕</button>
+</div>
+<div class="catchup-timeline" id="catchup-timeline"></div>
+</div>
+<div id="epg-grid">
+<div id="epg-grid-head">
+<h3>📺 Телепрограмма</h3>
+<button id="epg-grid-close" onclick="closeEpgGrid()">✕</button>
+</div>
+<div id="epg-grid-body"></div>
+</div>
+<div id="remote-overlay">
+<button class="remote-close" onclick="toggleRemote()">✕</button>
+<div class="remote-title">Пульт — текущий канал: <span id="remote-ch-name">—</span></div>
+<div class="remote-row">
+<button class="remote-btn" onclick="remoteAction('vol-up')" title="Громкость +">🔊</button>
+</div>
+<div class="remote-row">
+<button class="remote-btn" onclick="remoteAction('up')" title="Канал ▲">▲</button>
+</div>
+<div class="remote-row">
+<button class="remote-btn" onclick="remoteAction('play')" title="Пауза/Play">⏯</button>
+</div>
+<div class="remote-row">
+<button class="remote-btn" onclick="remoteAction('down')" title="Канал ▼">▼</button>
+</div>
+<div class="remote-row">
+<button class="remote-btn" onclick="remoteAction('vol-down')" title="Громкость −">🔉</button>
+</div>
 </div>
 <div id="error">
 <h2 id="err-title">Ошибка</h2>
@@ -125,34 +204,94 @@ var epgOv=document.getElementById('epg-overlay');
 var epgNow=document.getElementById('epg-now');
 var epgNext=document.getElementById('epg-next');
 var chList=document.getElementById('ch-list');
-var hls=null,channels=[],filtered=[],curIdx=-1,epgData={},curMode='ch',favorites=[];
+var catchupBar=document.getElementById('catchup-bar');
+var catchupTimeline=document.getElementById('catchup-timeline');
+var hls=null,channels=[],filtered=[],curIdx=-1,epgData={},epgFullData={},curMode='ch',favorites=[],catchupData=null,curCatchupIdx=-1;
+var retryCount=0,MAX_RETRIES=3,RETRY_DELAY=2000;
+var lastUrl='',lastIdx=-1;
 
 function play(url,idx){
     if(!url)return;
     urlIn.value=url;
     errDiv.style.display='none';
     epgOv.classList.remove('show');
+    retryCount=0;
+    lastUrl=url;
+    lastIdx=(idx!==undefined&&idx!==null)?idx:curIdx;
+    // Save last channel
+    try{
+        localStorage.setItem('iptv-last-channel',JSON.stringify({url:url,idx:lastIdx}));
+        if(vid.volume!==undefined)localStorage.setItem('iptv-volume',String(vid.volume));
+    }catch(e){}
+    _doPlay(url,idx);
+}
+
+function _doPlay(url,idx){
     if(hls){hls.destroy();hls=null}
     if(Hls.isSupported()){
-        hls=new Hls({enableWorker:true,lowLatencyMode:true,maxBufferLength:30,maxMaxBufferLength:60});
+        hls=new Hls({
+            enableWorker:true,
+            lowLatencyMode:true,
+            maxBufferLength:30,
+            maxMaxBufferLength:60,
+            startLevel:-1,
+            capLevelToPlayerSize:true
+        });
         hls.loadSource(url);
         hls.attachMedia(vid);
         hls.on(Hls.Events.MANIFEST_PARSED,function(){vid.play().catch(function(){})});
         hls.on(Hls.Events.ERROR,function(e,d){
             if(d.fatal){
                 if(d.type===Hls.ErrorTypes.NETWORK_ERROR){
-                    errText.textContent='Ошибка сети. Поток недоступен.';
+                    if(retryCount<MAX_RETRIES){
+                        retryCount++;
+                        errText.textContent='Ошибка сети. Переподключение ('+retryCount+'/'+MAX_RETRIES+')...';
+                        errDiv.style.display='block';
+                        setTimeout(function(){_doPlay(lastUrl,lastIdx)},RETRY_DELAY);
+                    }else{
+                        errText.textContent='Ошибка сети. Поток недоступен после '+MAX_RETRIES+' попыток.';
+                        errDiv.style.display='block';
+                    }
                 }else if(d.type===Hls.ErrorTypes.MEDIA_ERROR){
-                    hls.recoverMediaError();return;
+                    if(retryCount<MAX_RETRIES){
+                        retryCount++;
+                        errText.textContent='Ошибка медиа. Восстановление...';
+                        errDiv.style.display='block';
+                        hls.recoverMediaError();
+                        setTimeout(function(){
+                            if(!vid.paused&&vid.error){_doPlay(lastUrl,lastIdx)}
+                        },RETRY_DELAY);
+                    }else{
+                        errText.textContent='Ошибка медиа. Невосстановимо.';
+                        errDiv.style.display='block';
+                    }
                 }else{
                     errText.textContent='Неподдерживаемый формат.';
+                    errDiv.style.display='block';
                 }
-                errDiv.style.display='block';
+            }
+        });
+        hls.on(Hls.Events.FRAG_LOADED,function(){
+            if(errDiv.style.display==='block'){
+                errDiv.style.display='none';
             }
         });
     }else if(vid.canPlayType('application/vnd.apple.mpegurl')){
         vid.src=url;
         vid.addEventListener('loadedmetadata',function(){vid.play().catch(function(){})});
+        vid.onerror=function(){
+            if(retryCount<MAX_RETRIES){
+                retryCount++;
+                errText.textContent='Ошибка загрузки. Переподключение ('+retryCount+'/'+MAX_RETRIES+')...';
+                errDiv.style.display='block';
+                vid.src=url;
+                vid.load();
+                vid.play().catch(function(){});
+            }else{
+                errText.textContent='Ошибка загрузки после '+MAX_RETRIES+' попыток.';
+                errDiv.style.display='block';
+            }
+        };
     }else{
         errText.textContent='Браузер не поддерживает HLS.';
         errDiv.style.display='block';
@@ -315,7 +454,26 @@ function loadEpg(){
                 var st=p.getAttribute('start'),sp=p.getAttribute('stop'),ch=p.getAttribute('channel');
                 var te=p.getElementsByTagName('title')[0];
                 var ti=te?te.textContent:'';
+                var cuId=p.getAttribute('catchup-id')||'';
+                // Parse timestamps
+                var startTs=0,endTs=0;
+                if(st){
+                    var ys=st.substring(0,4),ms=st.substring(4,6),ds=st.substring(6,8);
+                    var hs=st.substring(8,10),mis=st.substring(10,12),ss=st.substring(12,14);
+                    startTs=new Date(ys,ms-1,ds,hs,mis,ss).getTime()/1000;
+                }
+                if(sp){
+                    var ye=sp.substring(0,4),me=sp.substring(4,6),de=sp.substring(6,8);
+                    var he=sp.substring(8,10),mie=sp.substring(10,12),se=sp.substring(12,14);
+                    endTs=new Date(ye,me-1,de,he,mie,se).getTime()/1000;
+                }
+                // "Сейчас играет"
                 if(st&&sp&&st<=ns&&sp>=ns&&ch&&ti)epgData[ch]=ti;
+                // Полные данные для catchup
+                if(ch&&ti){
+                    if(!epgFullData[ch])epgFullData[ch]=[];
+                    epgFullData[ch].push({title:ti,startTs:startTs,endTs:endTs,catchupId:cuId});
+                }
             }
             render();
         }catch(e){}
@@ -327,9 +485,153 @@ function p2(n){return n<10?'0'+n:''+n}
 
 function showEpg(id){
     if(!id||!epgData[id]){epgOv.classList.remove('show');return}
-    epgNow.textContent='📡 '+epgData[id];
+    var ch=channels[curIdx];
+    var hasCatchup=ch&&ch.catchup&&ch.catchup!=='none'&&ch.catchup_source;
+    epgNow.innerHTML='📡 '+epgData[id];
+    if(hasCatchup){
+        epgNow.innerHTML+=' <button class="epg-archive-btn" onclick="openCatchup()">📺 Архив</button>';
+    }
     epgOv.classList.add('show');
     setTimeout(function(){epgOv.classList.remove('show')},5000);
+}
+
+// --- Catchup / Timeshift ---
+function openCatchup(){
+    var ch=channels[curIdx];
+    if(!ch)return;
+    var chId=ch.i;
+    if(!chId||!epgFullData[chId]){
+        alert('Архив недоступен для этого канала');
+        return;
+    }
+    catchupData=epgFullData[chId].filter(function(p){return p.startTs&&p.endTs&&p.startTs<Date.now()/1000});
+    if(!catchupData.length){
+        alert('Нет прошедших передач в архиве');
+        return;
+    }
+    // Sort by time, newest first
+    catchupData.sort(function(a,b){return b.startTs-a.startTs});
+    // Show last 12 programs
+    catchupData=catchupData.slice(0,12);
+    renderCatchupTimeline(ch);
+    catchupBar.classList.add('show');
+}
+
+function closeCatchup(){
+    catchupBar.classList.remove('show');
+    catchupData=null;
+}
+
+function renderCatchupTimeline(ch){
+    var h='';
+    for(var i=0;i<catchupData.length;i++){
+        var p=catchupData[i];
+        var d=new Date(p.startTs*1000);
+        var timeStr=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+        h+='<div class="catchup-item" onclick="playCatchup('+i+')" data-idx="'+i+'">';
+        h+='<div class="catchup-time">'+timeStr+'</div>';
+        h+='<div>'+esc(p.title)+'</div></div>';
+    }
+    catchupTimeline.innerHTML=h;
+}
+
+function playCatchup(idx){
+    var p=catchupData[idx];
+    if(!p)return;
+    var ch=channels[curIdx];
+    var catchupType=ch.catchup||'shift';
+    var catchupSource=ch.catchup_source||'';
+
+    // Show loading
+    document.querySelectorAll('.catchup-item').forEach(function(el,i){
+        el.classList.toggle('active',i===idx);
+    });
+
+    // Build catchup URL via API
+    var x=new XMLHttpRequest();
+    x.open('POST',window.location.origin+'/cgi-bin/admin.cgi',true);
+    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'&&r.url){
+                play(r.url,curIdx);
+            }else{
+                alert('Не удалось открыть архив: '+(r.message||''));
+            }
+        }catch(e){alert('Ошибка загрузки архива')}
+    };
+    x.onerror=function(){alert('Ошибка сети')};
+    var params='action=get_catchup_url&channel_idx='+curIdx+'&start_ts='+Math.floor(p.startTs)+'&end_ts='+Math.floor(p.endTs);
+    if(p.catchupId)params+='&catchup_id='+encodeURIComponent(p.catchupId);
+    x.send(params);
+}
+
+function openEpgGrid(){
+    if(!Object.keys(epgFullData).length){
+        alert('Телепрограмма не загружена');
+        return;
+    }
+    var body=document.getElementById('epg-grid-body');
+    var now=Math.floor(Date.now()/1000);
+    var h='';
+    for(var chId in epgFullData){
+        var progs=epgFullData[chId].filter(function(p){return p.startTs&&p.endTs});
+        if(!progs.length)continue;
+        progs.sort(function(a,b){return a.startTs-b.startTs});
+        // Find channel name
+        var chName=chId;
+        for(var i=0;i<channels.length;i++){
+            if(channels[i].i===chId){chName=channels[i].n;break}
+        }
+        h+='<div class="epg-ch-row"><div class="epg-ch-label">'+esc(chName)+'</div><div class="epg-programs">';
+        for(var j=0;j<progs.length;j++){
+            var p=progs[j];
+            var d=new Date(p.startTs*1000);
+            var timeStr=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+            var cls='';
+            if(p.startTs<=now&&p.endTs>now)cls='now';
+            else if(p.endTs<=now)cls='past';
+            h+='<div class="epg-prog '+cls+'"';
+            if(cls==='now'&&channels[curIdx]&&channels[curIdx].i===chId){
+                h+=' onclick="playCatchupFromEpg(\''+esc(chId)+'\','+Math.floor(p.startTs)+','+Math.floor(p.endTs)+')"';
+            }
+            h+='><div class="epg-prog-time">'+timeStr+'</div><div class="epg-prog-title">'+esc(p.title)+'</div></div>';
+        }
+        h+='</div></div>';
+    }
+    body.innerHTML=h||'<div style="padding:20px;text-align:center;color:var(--text3)">Нет данных</div>';
+    document.getElementById('epg-grid').classList.add('show');
+}
+
+function closeEpgGrid(){
+    document.getElementById('epg-grid').classList.remove('show');
+}
+
+function playCatchupFromEpg(chId,startTs,endTs){
+    var idx=-1;
+    for(var i=0;i<channels.length;i++){
+        if(channels[i].i===chId){idx=i;break}
+    }
+    if(idx<0)return;
+    var ch=channels[idx];
+    var x=new XMLHttpRequest();
+    x.open('POST',window.location.origin+'/cgi-bin/admin.cgi',true);
+    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'&&r.url){
+                play(r.url,idx);
+                closeEpgGrid();
+            }else{
+                alert('Не удалось открыть: '+(r.message||''));
+            }
+        }catch(e){alert('Ошибка')}
+    };
+    x.onerror=function(){alert('Ошибка сети')};
+    var params='action=get_catchup_url&channel_idx='+idx+'&start_ts='+startTs+'&end_ts='+endTs;
+    x.send(params);
 }
 
 function toggleFs(){
@@ -386,9 +688,25 @@ function loadFavorites(){
 var params=new URLSearchParams(window.location.search);
 var sUrl=params.get('url'),sIdx=params.get('idx'),pUrl=params.get('pl');
 loadFavorites();
+
+// Restore volume
+try{
+    var savedVol=localStorage.getItem('iptv-volume');
+    if(savedVol!==null){vid.volume=parseFloat(savedVol)}
+}catch(e){}
+
 if(pUrl){loadPlUrl(pUrl)}
 else if(sUrl){play(sUrl,sIdx!==null?parseInt(sIdx):-1);loadChannels()}
-else{loadChannels()}
+else{
+    // Try restore last channel
+    try{
+        var last=JSON.parse(localStorage.getItem('iptv-last-channel'));
+        if(last&&last.url){
+            loadChannels();
+            setTimeout(function(){play(last.url,last.idx)},500);
+        }else{loadChannels()}
+    }catch(e){loadChannels()}
+}
 loadEpg();
 
 document.addEventListener('keydown',function(e){
@@ -407,6 +725,81 @@ document.addEventListener('keydown',function(e){
 });
 
 urlIn.addEventListener('keydown',function(e){if(e.key==='Enter')handleUrl()});
+
+// Save volume on change
+vid.addEventListener('volumechange',function(){
+    try{localStorage.setItem('iptv-volume',String(vid.volume))}catch(e){}
+});
+
+// Aspect ratio
+var arModes=['auto','16-9','4-3','fill'];
+var arLabels={'auto':'Авто','16-9':'16:9','4-3':'4:3','fill':'Заполнить'};
+var arIdx=0;
+try{var savedAr=localStorage.getItem('iptv-ar');if(savedAr){arIdx=arModes.indexOf(savedAr);if(arIdx<0)arIdx=0}}catch(e){}
+applyAr();
+
+function toggleAr(){
+    arIdx=(arIdx+1)%arModes.length;
+    applyAr();
+    try{localStorage.setItem('iptv-ar',arModes[arIdx])}catch(e){}
+}
+
+function applyAr(){
+    var mode=arModes[arIdx];
+    vid.className='';
+    if(mode!=='auto')vid.className='ar-'+mode;
+    var btn=document.getElementById('ar-btn');
+    if(btn)btn.textContent=arLabels[mode]||'⬜';
+}
+
+// Remote control
+var isRemote=false;
+function toggleRemote(){
+    isRemote=!isRemote;
+    document.getElementById('remote-overlay').classList.toggle('show',isRemote);
+    document.getElementById('remote-btn').textContent=isRemote?'📺':'📱';
+    if(isRemote){
+        var ch=channels[curIdx];
+        document.getElementById('remote-ch-name').textContent=ch?ch.n:'—';
+    }
+}
+
+function remoteAction(action){
+    switch(action){
+        case 'up':
+            if(curIdx>0)play(channels[curIdx-1].u,curIdx-1);
+            break;
+        case 'down':
+            if(curIdx<channels.length-1)play(channels[curIdx+1].u,curIdx+1);
+            break;
+        case 'play':
+            vid.paused?vid.play():vid.pause();
+            break;
+        case 'vol-up':
+            vid.volume=Math.min(1,vid.volume+0.1);
+            break;
+        case 'vol-down':
+            vid.volume=Math.max(0,vid.volume-0.1);
+            break;
+    }
+    // Update remote display
+    var ch=channels[curIdx];
+    document.getElementById('remote-ch-name').textContent=ch?ch.n:'—';
+    // Also send event for other tabs (cross-tab remote)
+    try{localStorage.setItem('iptv-remote-action',JSON.stringify({action:action,idx:curIdx,ts:Date.now()}))}catch(e){}
+}
+
+// Listen for remote actions from other tabs
+window.addEventListener('storage',function(e){
+    if(e.key==='iptv-remote-action'){
+        try{
+            var data=JSON.parse(e.newValue);
+            if(data&&data.action){
+                remoteAction(data.action);
+            }
+        }catch(ex){}
+    }
+});
 
 function toggleTheme(){
     var d=document.documentElement,c=d.getAttribute('data-theme')||'light';

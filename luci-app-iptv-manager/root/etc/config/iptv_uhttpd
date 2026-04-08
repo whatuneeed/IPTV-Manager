@@ -1,0 +1,10 @@
+# IPTV Manager uhttpd config
+# Used as fallback if /etc/config/uhttpd doesn't have IPTV section
+
+config uhttpd 'iptv'
+    list listen_http '0.0.0.0:8082'
+    option home '/www/iptv'
+    list interpreter '.cgi=/bin/sh'
+    option cgi_prefix '/cgi-bin'
+    option max_requests '60'
+    option http_keepalive '5'

@@ -15,6 +15,9 @@
         "action": {
             "type": "view",
             "path": "iptv-manager/iptv"
+        },
+        "depends": {
+            "acl": [ "luci-app-iptv-manager" ]
         }
     },
     "admin/services/iptv-manager/player": {
@@ -23,6 +26,9 @@
         "action": {
             "type": "view",
             "path": "iptv-manager/player"
+        },
+        "depends": {
+            "acl": [ "luci-app-iptv-manager" ]
         }
     },
     "admin/services/iptv-manager/server": {
@@ -31,6 +37,9 @@
         "action": {
             "type": "view",
             "path": "iptv-manager/server"
+        },
+        "depends": {
+            "acl": [ "luci-app-iptv-manager" ]
         }
     }
 }

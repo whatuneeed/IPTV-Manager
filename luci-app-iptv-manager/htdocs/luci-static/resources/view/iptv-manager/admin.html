@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: http: https:; connect-src 'self'">
+<title>IPTV Manager</title>
+<style>
+:root{--bg:#f0f2f5;--card:#fff;--text:#1a1a2e;--text2:#666;--text3:#888;--border:#e0e0e0;--input-bg:#fafafa;--hover-bg:#f8f9fa;--primary:#1a73e8;--primary-hover:#1557b0;--success:#1e8e3e;--danger:#d93025;--shadow:0 1px 3px rgba(0,0,0,.06);--shadow-lg:0 8px 32px rgba(0,0,0,.15)}
+[data-theme="dark"]{--bg:#0a0e1a;--card:#1e293b;--text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;--border:#334155;--input-bg:#0f172a;--hover-bg:#334155;--primary:#3b82f6;--primary-hover:#2563eb;--success:#22c55e;--danger:#ef4444;--shadow:0 1px 3px rgba(0,0,0,.2);--shadow-lg:0 8px 32px rgba(0,0,0,.4)}
+[data-theme="openwrt"]{--bg:#1a1b26;--card:#24283b;--text:#c0caf5;--text2:#9aa5ce;--text3:#565f89;--border:#3b4261;--input-bg:#1e2030;--hover-bg:#292e42;--primary:#7aa2f7;--primary-hover:#6893db;--success:#9ece6a;--danger:#f7768e;--shadow:0 1px 3px rgba(0,0,0,.2);--shadow-lg:0 8px 32px rgba(0,0,0,.4)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;transition:background .2s,color .2s}
+.c{max-width:1200px;margin:0 auto;padding:16px}
+.h{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:2px solid var(--border);margin-bottom:16px;background:var(--card);border-radius:8px;box-shadow:var(--shadow)}
+.h h1{font-size:20px;color:var(--primary)}.h p{color:var(--text3);font-size:11px;margin-top:2px}
+.tt{background:var(--input-bg);border:1px solid var(--border);border-radius:20px;padding:6px 14px;cursor:pointer;font-size:13px;color:var(--text)}
+.st{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:6px;margin-bottom:16px}
+.s{background:var(--card);border-radius:8px;padding:12px;text-align:center;border:1px solid var(--border);box-shadow:var(--shadow)}
+.sv{font-size:18px;font-weight:700;color:var(--primary)}.sl{font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px}
+.ub{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px;margin:6px 0;display:flex;align-items:center;gap:6px}
+.ub code{flex:1;font-size:12px;color:var(--primary);word-break:break-all}
+.ub button{padding:4px 10px;background:var(--input-bg);border:1px solid var(--primary);border-radius:4px;color:var(--primary);cursor:pointer;font-size:11px}
+.tb{display:flex;gap:4px;margin-bottom:14px;background:var(--card);border-radius:8px;padding:4px;overflow-x:auto;border:1px solid var(--border)}
+.t{flex:1;padding:9px 10px;border:none;background:transparent;color:var(--text2);border-radius:6px;cursor:pointer;font-size:12px;font-weight:500}
+.t:hover{color:var(--primary)}.t.a{background:var(--primary);color:#fff}
+.pn{display:none;background:var(--card);border-radius:0 0 12px 12px;padding:16px;border:1px solid var(--border);border-top:none;margin-bottom:10px;box-shadow:var(--shadow)}
+.pn.a{display:block}.pn h2{font-size:15px;margin-bottom:12px}
+.fg{margin-bottom:10px}.fg label{display:block;font-size:11px;color:var(--text2);margin-bottom:3px}
+.fg input,.fg textarea,.fg select{width:100%;padding:8px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px}
+.fg textarea{min-height:80px;font-family:monospace;font-size:11px;resize:vertical}
+.fg .hint{font-size:10px;color:var(--text3);margin-top:2px}
+.b{padding:7px 14px;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;display:inline-block;transition:all .15s}
+.b:disabled{opacity:.5;cursor:not-allowed}
+.bp{background:var(--primary);color:#fff}.bp:hover:not(:disabled){background:var(--primary-hover)}
+.bd{background:var(--danger);color:#fff}.bd:hover:not(:disabled){background:#b3261e}
+.bs{background:var(--success);color:#fff}.bs:hover:not(:disabled){background:#137333}
+.bo{background:transparent;border:1px solid var(--border);color:var(--text)}.bo:hover{background:var(--hover-bg)}
+.bsm{padding:5px 10px;font-size:11px}
+.bg{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+hr{border:none;border-top:1px solid var(--border);margin:12px 0}
+.ch-t{width:100%;border-collapse:collapse}
+.ch-t th{text-align:left;padding:8px 10px;font-size:11px;color:var(--text3);border-bottom:2px solid var(--border)}
+.ch-t td{padding:8px 10px;font-size:12px;border-bottom:1px solid var(--border)}
+.ch-t tr:hover{background:var(--hover-bg)}
+.ch-t .sel{width:20px;text-align:center}
+.ch-n{font-weight:500;max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-g{color:var(--text3);font-size:11px}
+.ch-p{color:var(--text2);font-size:11px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-logo{width:20px;height:20px;border-radius:3px;object-fit:contain;vertical-align:middle;margin-right:4px}
+.epg-t{width:100%;border-collapse:collapse}.epg-t th{text-align:left;padding:8px 10px;font-size:11px;color:var(--text3);border-bottom:2px solid var(--border)}
+.epg-t td{padding:8px 10px;font-size:12px;border-bottom:1px solid var(--border)}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.sc{background:var(--input-bg);border-radius:8px;padding:12px;border:1px solid var(--border)}
+.sc h3{font-size:12px;margin-bottom:8px}.sc select{width:100%;padding:8px;background:var(--card);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px}
+.si{margin-top:8px;font-size:10px;color:var(--text3)}.si span{color:var(--text)}
+.banner{background:#e8f0fe;border:1px solid #1a73e8;border-radius:8px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:#1a73e8}
+.banner code{background:#fff;padding:2px 6px;border-radius:3px;font-size:11px}
+.ft{text-align:center;padding:16px 0;color:var(--text3);font-size:10px}
+.toast{position:fixed;top:12px;right:12px;padding:10px 14px;border-radius:6px;font-size:12px;z-index:200;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:si .2s ease-out}
+@keyframes si{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.to{background:#e6f4ea;border:1px solid #1e8e3e;color:#137333}.te{background:#fce8e6;border:1px solid #d93025;color:#c5221f}
+.tw{background:#fef3cd;border:1px solid #ffc107;color:#856404}
+.fb{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+.fb select,.fb input{padding:6px 10px;background:var(--input-bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px}
+.fb input{flex:1;min-width:150px}
+.loading{text-align:center;padding:40px;color:var(--text3)}
+.fav-btn{background:none;border:none;cursor:pointer;font-size:16px;padding:2px 4px;color:var(--text3)}
+/* Loading spinner */
+.spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--text3);border-top-color:var(--primary);border-radius:50%;animation:spin .6s linear infinite;margin-right:6px;vertical-align:middle}
+@keyframes spin{to{transform:rotate(360deg)}}
+/* Modal */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center}
+.modal.open{display:flex}
+.modal-box{background:var(--card);border-radius:12px;padding:24px;border:1px solid var(--border);max-width:640px;width:92%;box-shadow:var(--shadow-lg)}
+.modal-box h3{font-size:16px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border)}
+/* Stats bar */
+.stats-bar{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap}
+.stat-chip{background:var(--input-bg);border:1px solid var(--border);border-radius:16px;padding:4px 12px;font-size:11px;color:var(--text2)}
+.stat-chip b{color:var(--primary)}
+@media(max-width:700px){.st{grid-template-columns:1fr 1fr}.sg{grid-template-columns:1fr}.h{flex-direction:column;gap:10px}.fb{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="c">
+<div class="h">
+<div><h1>IPTV Manager</h1><p id="admin-ver">OpenWrt</p></div>
+<button class="tt" id="ttb" onclick="toggleTheme()">☀️ Light</button>
+</div>
+<div class="st" id="stats"></div>
+<div class="ub"><code id="pl-url-display">—</code><button onclick="cp(this)">Копировать</button></div>
+<div class="ub"><code id="epg-url-display">—</code><button onclick="cp(this)">Копировать</button></div>
+<div class="tb">
+<button class="t a" onclick="st('status',this)">Каналы</button>
+<button class="t" onclick="st('playlist',this)">Плейлист</button>
+<button class="t" onclick="st('epg',this)">Телепрограмма</button>
+<button class="t" onclick="st('settings',this)">Настройки</button>
+</div>
+
+<!-- Channels tab -->
+<div class="pn a" id="p-status">
+<h2>Список каналов</h2>
+<div class="stats-bar" id="stats-bar"></div>
+<div class="fb">
+<select id="f-g" onchange="filterCh()"><option value="">Все группы</option></select>
+<input type="text" id="f-s" placeholder="Поиск..." oninput="filterCh()">
+<button class="b bsm bo" id="fav-btn" onclick="toggleFavFilter()">☆ Избранное</button>
+<button class="b bsm bp" id="check-all-btn" onclick="checkAll()">Проверить все</button>
+<button class="b bsm bd" id="broken-btn" onclick="showBroken()">Сломанные (0)</button>
+</div>
+<div style="overflow-x:auto">
+<table class="ch-t">
+<thead><tr><th class="sel"><input type="checkbox" id="sel-all" onchange="toggleSelAll(this)"></th><th>★</th><th>Название</th><th>Группа</th><th>Сейчас играет</th><th style="width:70px">Пинг</th><th></th></tr></thead>
+<tbody id="ch-tb"><tr><td colspan="7" class="loading">Загрузка каналов...</td></tbody>
+</table>
+</div>
+<div class="bg" id="mass-actions" style="display:none">
+<button class="b bsm bp" onclick="massChangeGroup()">Сменить группу</button>
+<button class="b bsm bd" onclick="massDelete()">Удалить выбранные</button>
+</div>
+<div id="pager" style="display:flex;justify-content:center;gap:6px;margin-top:12px;flex-wrap:wrap"></div>
+</div>
+
+<!-- Playlist tab -->
+<div class="pn" id="p-playlist">
+<h2>Плейлист</h2>
+<div class="fg"><label>Название</label><input type="text" id="pl-name" placeholder="Мой плейлист"><div class="hint">Отображается в статистике</div></div>
+<div class="bg"><button class="b bp bsm" id="pl-name-btn" onclick="setPlName()">Сохранить</button></div>
+<hr>
+<div class="fg"><label>URL плейлиста</label><input type="url" id="pl-u" placeholder="http://example.com/playlist.m3u"><div class="hint">M3U/M3U8 ссылка</div></div>
+<div class="bg"><button class="b bp" id="pl-apply-btn" onclick="setPlUrl()">Применить</button><button class="b bs" id="pl-refresh-btn" onclick="act('refresh_playlist','')">Обновить</button></div>
+<hr>
+<h3>Исходный M3U</h3>
+<div class="fg"><textarea id="pl-r" readonly style="min-height:200px"></textarea></div>
+</div>
+
+<!-- EPG tab -->
+<div class="pn" id="p-epg">
+<h2>Телепрограмма (EPG)</h2>
+<div id="epg-notice"></div>
+<div class="fg"><label>URL EPG (XMLTV)</label><input type="url" id="epg-u" placeholder="https://iptvx.one/EPG_LITE"><div class="hint">XML или XML.gz</div></div>
+<div class="bg"><button class="b bp" id="epg-apply-btn" onclick="setEpgUrl()">Применить</button><button class="b bs" id="epg-refresh-btn" onclick="act('refresh_epg','');setTimeout(loadEpgTable,1000)">Обновить</button></div>
+<hr>
+<h3>Передачи <button class="b bsm bo" onclick="loadEpgTable()">🔄</button></h3>
+<div style="overflow-x:auto"><table class="epg-t"><thead><tr><th>Время</th><th>Канал</th><th>Передача</th></tr></thead><tbody id="epg-tb"></tbody></table></div>
+</div>
+
+<!-- Settings tab -->
+<div class="pn" id="p-settings">
+<h2>Настройки</h2>
+<div class="sg">
+<div class="sc"><h3>Расписание плейлиста</h3><select id="s-pl"><option value="0">Выкл</option><option value="1">Каждый час</option><option value="6">Каждые 6ч</option><option value="12">Каждые 12ч</option><option value="24">Раз в сутки</option></select><div class="si">Последнее: <span id="pl-last">—</span></div></div>
+<div class="sc"><h3>Расписание EPG</h3><select id="s-epg"><option value="0">Выкл</option><option value="1">Каждый час</option><option value="6">Каждые 6ч</option><option value="12">Каждые 12ч</option><option value="24">Раз в сутки</option></select><div class="si">Последнее: <span id="epg-last">—</span></div></div>
+</div>
+<div class="bg"><button class="b bp bsm" onclick="saveSched()">Сохранить</button></div>
+<hr>
+<h3>Бэкап</h3>
+<div class="bg"><button class="b bs bsm" onclick="act('backup','')">Скачать</button></div>
+<hr>
+<h3>Обновление</h3>
+<div id="up-info" style="font-size:11px;color:var(--text3);margin-bottom:8px"></div>
+<div class="bg"><button class="b bsm bo" onclick="checkUpdate()">Проверить</button><button class="b bp bsm" onclick="doUpdateKeep()">Обновить</button></div>
+<hr>
+<h3>Безопасность</h3>
+<div class="sg">
+<div class="sc"><h3>Пароль</h3><div class="fg"><label>Логин</label><input type="text" id="sec-user" placeholder="Пусто = отключить"></div><div class="fg"><label>Пароль</label><input type="password" id="sec-pass" placeholder="Пусто = отключить"></div><div class="bg"><button class="b bp bsm" onclick="saveSecurity()">Сохранить</button></div></div>
+<div class="sc"><h3>API токен</h3><div class="fg"><label>Токен</label><input type="text" id="sec-token" placeholder="Пусто = отключить"></div><div class="bg"><button class="b bs bsm" onclick="saveToken()">Сохранить</button></div></div>
+</div>
+<hr>
+<h3>Дополнительно</h3>
+<div class="sg">
+<div class="sc"><h3>Объединить плейлисты</h3><div class="fg"><textarea id="merge-urls" placeholder="http://...\nhttp://..."></textarea></div><div class="bg"><button class="b bp bsm" onclick="mergePlaylists()">Объединить</button></div></div>
+<div class="sc"><h3>Проверить URL</h3><div class="fg"><input type="url" id="validate-url" placeholder="http://..."></div><div class="bg"><button class="b bp bsm" onclick="validatePlaylist()">Проверить</button></div></div>
+</div>
+<hr>
+<h3 style="color:var(--danger)">Опасная зона</h3>
+<div class="bg"><button class="b bd bsm" onclick="factoryReset()">🗑️ Сброс к заводским</button></div>
+</div>
+
+<div class="ft" id="footer">IPTV Manager</div>
+</div>
+
+<!-- Edit modal -->
+<div class="modal" id="em">
+<div class="modal-box">
+<h3>Редактировать канал</h3>
+<div class="fg"><label>Название</label><input type="text" id="e-n" readonly></div>
+<div class="fg"><label>Ссылка</label><input type="text" id="e-u"></div>
+<div class="fg"><label>Группа</label><input type="text" id="e-g"></div>
+<div class="bg"><button class="b bp bsm" onclick="saveEdit()">Сохранить</button><button class="b bo bsm" onclick="closeModal()">Отмена</button></div>
+</div>
+</div>
+
+<script>
+var API='/cgi-bin/admin.cgi';
+var channels=[],epgMap={},epgFullData={},favorites=[],PS=150,CP=0,filteredRows=[],showFavOnly=false;
+var selectedChannels=new Set();
+var brokenChannels=new Set();
+
+// Theme
+function toggleTheme(){var d=document.documentElement,c=d.getAttribute('data-theme')||'light',n=c==='light'?'dark':c==='dark'?'openwrt':'light';d.setAttribute('data-theme',n);var b=document.getElementById('ttb');if(b)b.innerHTML=n==='light'?'☀️ Light':n==='dark'?'🌙 Dark':'🟣 OpenWrt';try{localStorage.setItem('iptv-theme',n)}catch(e){}}
+(function(){try{var t=localStorage.getItem('iptv-theme'),b=document.getElementById('ttb');if(t==='dark'){document.documentElement.setAttribute('data-theme','dark');if(b)b.innerHTML='🌙 Dark'}else if(t==='openwrt'){document.documentElement.setAttribute('data-theme','openwrt');if(b)b.innerHTML='🟣 OpenWrt'}else if(b)b.innerHTML='☀️ Light';if(window.parent!==window){document.documentElement.setAttribute('data-theme','openwrt');if(b)b.innerHTML='🟣 OpenWrt'}}catch(e){}})();
+
+// Tab switching
+function st(t,e){document.querySelectorAll('.t').forEach(function(x){x.classList.remove('a')});document.querySelectorAll('.pn').forEach(function(x){x.classList.remove('a')});document.getElementById('p-'+t).classList.add('a');e.classList.add('a');if(t==='playlist')loadRaw();if(t==='epg')loadEpgTable()}
+
+// Copy
+function cp(b){var c=b.previousElementSibling,r=document.createRange();r.selectNodeContents(c);var s=window.getSelection();s.removeAllRanges();s.addRange(r);document.execCommand('copy');s.removeAllRanges();b.textContent='OK';setTimeout(function(){b.textContent='Копировать'},1500)}
+
+// Toast with loading support
+function toast(m,t,dur){var d=document.createElement('div');d.className='toast '+(t==='ok'?'to':t==='warn'?'tw':'te');d.innerHTML=m;document.body.appendChild(d);setTimeout(function(){d.remove()},dur||4000)}
+
+// API call with error handling
+function act(a,p,cb){
+    var btn=arguments[3]||null;
+    if(btn){btn.disabled=true;btn.innerHTML='<span class="spinner"></span>Загрузка...'}
+    var x=new XMLHttpRequest();
+    x.open('POST',API,true);
+    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    x.timeout=60000;
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(cb){cb(r)}
+            else if(r.status==='ok'){toast(r.message||'Готово','ok');setTimeout(function(){location.reload()},1500)}
+            else toast(r.message||'Ошибка','err')
+        }catch(e){toast('Ошибка: неверный формат ответа','err')}
+        if(btn){btn.disabled=false;btn.textContent=btn.dataset.origText||'OK'}
+    };
+    x.onerror=function(){toast('Ошибка сети','err');if(btn){btn.disabled=false;btn.textContent=btn.dataset.origText||'OK'}};
+    x.ontimeout=function(){toast('Таймаут запроса','err');if(btn){btn.disabled=false;btn.textContent=btn.dataset.origText||'OK'}};
+    if(btn)btn.dataset.origText=btn.textContent;
+    x.send('action='+a+'&'+p);
+}
+
+// Channel status check
+function checkCh(idx){
+    var ch=channels[idx];
+    if(!ch)return;
+    var el=document.getElementById('st-'+idx);
+    if(el)el.innerHTML='<span class="spinner"></span>';
+    var x=new XMLHttpRequest();
+    x.open('POST',API,true);
+    x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    x.timeout=10000;
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(el)el.innerHTML=r.online?'<span style="color:var(--success)">●</span>':'<span style="color:var(--danger)">●</span>';
+            if(!r.online)brokenChannels.add(idx);
+            else brokenChannels.delete(idx);
+            updateBrokenBtn();
+        }catch(e){if(el)el.innerHTML='<span style="color:var(--text3)">?</span>'}
+    };
+    x.onerror=x.ontimeout=function(){if(el)el.innerHTML='<span style="color:var(--text3)">?</span>';brokenChannels.add(idx);updateBrokenBtn()};
+    x.send('action=check_channel&url='+encodeURIComponent(ch.u));
+}
+
+function checkAll(){
+    var btn=document.getElementById('check-all-btn');
+    btn.disabled=true;
+    btn.innerHTML='<span class="spinner"></span>Проверка...';
+    brokenChannels.clear();
+    channels.forEach(function(_,i){checkCh(i)});
+    setTimeout(function(){btn.disabled=false;btn.textContent='Проверить все'},channels.length*200+2000);
+}
+
+function updateBrokenBtn(){
+    var btn=document.getElementById('broken-btn');
+    btn.textContent='Сломанные ('+brokenChannels.size+')';
+    btn.style.display=brokenChannels.size?'':'none';
+}
+
+function showBroken(){
+    filteredRows=channels.filter(function(_,i){return brokenChannels.has(i)});
+    filteredRows.forEach(function(ch,i){ch._idx=i});
+    CP=0;renderRows();
+}
+
+function toggleSelAll(cb){
+    var checked=cb.checked;
+    filteredRows.forEach(function(ch){
+        if(checked)selectedChannels.add(ch._idx);
+        else selectedChannels.delete(ch._idx);
+    });
+    renderRows();
+    updateMassActions();
+}
+
+function toggleSel(idx,cb){
+    if(cb.checked)selectedChannels.add(idx);
+    else selectedChannels.delete(idx);
+    updateMassActions();
+}
+
+function updateMassActions(){
+    var bar=document.getElementById('mass-actions');
+    bar.style.display=selectedChannels.size?'flex':'none';
+}
+
+function massChangeGroup(){
+    var g=prompt('Новая группа:');
+    if(!g)return;
+    var count=0;
+    selectedChannels.forEach(function(idx){
+        var ch=channels[idx];
+        if(ch){ch.g=g;count++}
+    });
+    if(count)toast('Группа изменена для '+count+' каналов','ok');
+    selectedChannels.clear();
+    filterCh();
+}
+
+function massDelete(){
+    if(!confirm('Удалить '+selectedChannels.size+' каналов?'))return;
+    // Filter out selected
+    channels=channels.filter(function(_,i){return !selectedChannels.has(i)});
+    selectedChannels.clear();
+    filterCh();
+    toast('Каналы удалены','ok');
+}
+
+// Edit modal
+function editCh(idx){
+    var ch=channels[idx];
+    if(!ch)return;
+    document.getElementById('e-n').value=ch.n;
+    document.getElementById('e-u').value=ch.u;
+    document.getElementById('e-g').value=ch.g;
+    document.getElementById('em').classList.add('open');
+    document.getElementById('em').setAttribute('data-idx',idx);
+}
+function closeModal(){document.getElementById('em').classList.remove('open')}
+function saveEdit(){
+    var idx=document.getElementById('em').getAttribute('data-idx');
+    var u=document.getElementById('e-u').value;
+    var g=document.getElementById('e-g').value;
+    act('update_channel','idx='+idx+'&new_url='+encodeURIComponent(u)+'&new_group='+encodeURIComponent(g),function(r){
+        if(r.status==='ok'){toast('Сохранено','ok');closeModal();setTimeout(function(){location.reload()},1000)}
+        else toast(r.message||'Ошибка','err');
+    });
+}
+
+// Playlist
+function setPlUrl(){
+    var u=document.getElementById('pl-u').value;
+    if(!u){toast('Введите URL','err');return}
+    var btn=document.getElementById('pl-apply-btn');
+    act('set_playlist_url','url='+encodeURIComponent(u),null,btn);
+}
+
+function setPlName(){
+    var n=document.getElementById('pl-name').value;
+    if(!n){toast('Введите название','err');return}
+    act('set_playlist_name','name='+encodeURIComponent(n));
+}
+
+// EPG
+function setEpgUrl(){
+    var u=document.getElementById('epg-u').value;
+    if(!u){toast('Введите URL','err');return}
+    var btn=document.getElementById('epg-apply-btn');
+    act('set_epg_url','url='+encodeURIComponent(u),null,btn);
+}
+
+function loadEpgTable(){
+    var x=new XMLHttpRequest();
+    x.open('GET',API+'?action=get_epg',true);
+    x.timeout=15000;
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            var tb=document.getElementById('epg-tb');
+            if(r.status==='ok'&&r.rows&&r.rows.length){
+                var h='';
+                for(var i=0;i<r.rows.length;i++){
+                    var row=r.rows[i];
+                    h+='<tr><td>'+escHtml(row.t)+'</td><td>'+escHtml(row.c)+'</td><td>'+escHtml(row.p)+'</td></tr>';
+                }
+                tb.innerHTML=h;
+            }else{
+                tb.innerHTML='<tr><td colspan="3" class="loading">Нет данных</td></tr>';
+            }
+        }catch(e){document.getElementById('epg-tb').innerHTML='<tr><td colspan="3" class="loading">Ошибка</td></tr>'}
+    };
+    x.onerror=x.ontimeout=function(){document.getElementById('epg-tb').innerHTML='<tr><td colspan="3" class="loading">Ошибка</td></tr>'};
+    x.send();
+}
+
+// Schedule
+function saveSched(){
+    act('set_schedule','playlist_interval='+document.getElementById('s-pl').value+'&epg_interval='+document.getElementById('s-epg').value);
+}
+
+// Raw playlist
+function loadRaw(){
+    var x=new XMLHttpRequest();
+    x.open('GET','/playlist.m3u',true);
+    x.onload=function(){document.getElementById('pl-r').value=x.responseText};
+    x.send();
+}
+
+// Render channels
+function renderRows(){
+    var tb=document.getElementById('ch-tb');
+    if(!filteredRows.length){tb.innerHTML='<tr><td colspan="7" class="loading">Нет каналов</td></tr>';document.getElementById('pager').innerHTML='';return}
+    var total=filteredRows.length,pages=Math.ceil(total/PS);
+    if(CP>=pages)CP=pages-1;if(CP<0)CP=0;
+    var start=CP*PS,end=Math.min(start+PS,total),html='';
+    for(var i=start;i<end;i++){
+        var ch=filteredRows[i],ri=ch._idx;
+        var prog=ch.i&&epgMap[ch.i]?escHtml(epgMap[ch.i]):'—';
+        var isFav=favorites.indexOf(ri)>=0;
+        var isSel=selectedChannels.has(ri);
+        var logoHtml=ch.l?'<img class="ch-logo" src="'+escHtml(ch.l)+'" onerror="this.style.display=\'none\'">':'';
+        html+='<tr>';
+        html+='<td class="sel"><input type="checkbox" '+(isSel?'checked':'')+' onchange="toggleSel('+ri+',this)"></td>';
+        html+='<td><button class="fav-btn" onclick="toggleFav('+ri+')">'+(isFav?'★':'☆')+'</button></td>';
+        html+='<td class="ch-n">'+logoHtml+escHtml(ch.n)+'</td>';
+        html+='<td class="ch-g">'+escHtml(ch.g)+'</td>';
+        html+='<td class="ch-p">'+prog+'</td>';
+        html+='<td><span id="st-'+ri+'" style="color:var(--text3)">○</span></td>';
+        html+='<td><button class="b bsm bo" onclick="editCh('+ri+')">Изм.</button></td>';
+        html+='</tr>';
+    }
+    tb.innerHTML=html;renderPager(total,pages);
+}
+
+function renderPager(total,pages){
+    var pg=document.getElementById('pager');
+    if(pages<=1){pg.innerHTML='<span class="pg-info">'+total+' каналов</span>';return}
+    var h='<button class="b bsm bo" onclick="goPage(CP-1)"'+(CP===0?' disabled':'')+'>‹</button>';
+    for(var i=0;i<pages;i++){
+        if(pages>15&&Math.abs(i-CP)>3&&i!==0&&i!==pages-1){if(i===1||i===pages-2)h+='<span>…</span>';continue}
+        h+='<button class="b bsm '+(i===CP?'bp':'bo')+'" onclick="goPage('+i+')">'+(i+1)+'</button>';
+    }
+    h+='<button class="b bsm bo" onclick="goPage(CP+1)"'+(CP===pages-1?' disabled':'')+'>›</button>';
+    h+='<span class="pg-info">'+(CP*PS+1)+'–'+Math.min((CP+1)*PS,total)+' из '+total+'</span>';
+    pg.innerHTML=h;
+}
+
+function goPage(n){var pages=Math.ceil(filteredRows.length/PS);if(n<0||n>=pages)return;CP=n;renderRows()}
+
+function filterCh(){
+    var g=document.getElementById('f-g').value,s=document.getElementById('f-s').value.toLowerCase();
+    filteredRows=[];
+    for(var i=0;i<channels.length;i++){
+        var ch=channels[i],show=(!g||ch.g===g)&&(!s||ch.n.toLowerCase().indexOf(s)>=0);
+        if(showFavOnly&&favorites.indexOf(i)<0)show=false;
+        if(show){ch._idx=i;filteredRows.push(ch)}
+    }
+    CP=0;renderRows();
+}
+
+function toggleFavFilter(){
+    showFavOnly=!showFavOnly;
+    var btn=document.getElementById('fav-btn');
+    btn.innerHTML=showFavOnly?'★ Избранное':'☆ Избранное';
+    btn.className=showFavOnly?'b bsm bs':'b bsm bo';
+    filterCh();
+}
+
+function toggleFav(idx){
+    var x=new XMLHttpRequest();
+    x.open('POST',API,true);x.setRequestHeader('Content-Type','application/x-www-form-urlencoded');
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'){
+                if(r.fav){if(favorites.indexOf(idx)<0)favorites.push(idx)}
+                else{var fi=favorites.indexOf(idx);if(fi>=0)favorites.splice(fi,1)}
+                filterCh();
+            }
+        }catch(e){}
+    };
+    x.send('action=toggle_favorite&idx='+idx);
+}
+
+function loadChannels(){
+    var x=new XMLHttpRequest();
+    x.open('GET','/channels.json',true);
+    x.timeout=15000;
+    x.onload=function(){
+        try{
+            channels=JSON.parse(x.responseText);
+            fillGroups();filterCh();
+        }catch(e){document.getElementById('ch-tb').innerHTML='<tr><td colspan="7" class="loading">Ошибка загрузки каналов</td></tr>'}
+    };
+    x.onerror=x.ontimeout=function(){document.getElementById('ch-tb').innerHTML='<tr><td colspan="7" class="loading">Ошибка загрузки каналов</td></tr>'};
+    x.send();
+}
+
+function loadEpgMap(){
+    var x=new XMLHttpRequest();
+    x.open('GET',API+'?action=get_epg',true);
+    x.timeout=15000;
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            if(r.status==='ok'&&r.rows){
+                var now=new Date(),ns=now.getFullYear()+('0'+(now.getMonth()+1)).slice(-2)+('0'+now.getDate()).slice(-2)+('0'+now.getHours()).slice(-2)+('0'+now.getMinutes()).slice(-2)+('0'+now.getSeconds()).slice(-2);
+                for(var i=0;i<r.rows.length;i++){
+                    var row=r.rows[i],parts=row.t.split(':'),h=parseInt(parts[0])||0,m=parseInt(parts[1])||0;
+                    if(h===parseInt(ns.slice(8,10))&&m>=parseInt(ns.slice(10,12))-30&&m<=parseInt(ns.slice(10,12))+30)epgMap[row.c]=row.p;
+                }
+            }
+            renderRows();
+        }catch(e){}
+    };
+    x.send();
+}
+
+function fillGroups(){
+    var g={};
+    for(var i=0;i<channels.length;i++){if(channels[i].g&&!g[channels[i].g])g[channels[i].g]=true}
+    var s=document.getElementById('f-g');
+    s.innerHTML='<option value="">Все группы</option>';
+    var k=Object.keys(g).sort();
+    for(var j=0;j<k.length;j++){var o=document.createElement('option');o.value=k[j];o.textContent=k[j];s.appendChild(o)}
+}
+
+function escHtml(s){if(!s)return'';return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+
+// Settings
+function saveSecurity(){
+    var u=document.getElementById('sec-user').value,p=document.getElementById('sec-pass').value;
+    act('set_security','user='+encodeURIComponent(u)+'&pass='+encodeURIComponent(p),function(r){
+        if(r.status==='ok'){toast(r.message||'Готово','ok');document.getElementById('sec-user').value='';document.getElementById('sec-pass').value=''}
+        else toast(r.message||'Ошибка','err');
+    });
+}
+function saveToken(){act('set_token','token='+encodeURIComponent(document.getElementById('sec-token').value))}
+
+function checkUpdate(){
+    var x=new XMLHttpRequest();x.open('GET',API+'?action=check_update',true);x.timeout=10000;
+    x.onload=function(){
+        try{
+            var r=JSON.parse(x.responseText);
+            var info=document.getElementById('up-info');
+            if(info)info.textContent='Установлено: v'+r.current+', доступно: '+(r.latest||'—');
+            if(r.status==='ok'){if(r.update)toast('Доступно обновление v'+r.latest+'!','ok');else toast('Последняя версия v'+r.current,'ok')}
+        }catch(e){toast('Ошибка проверки','err')}
+    };
+    x.onerror=x.ontimeout=function(){toast('Ошибка сети','err')};
+    x.send();
+}
+
+function doUpdateKeep(){
+    if(!confirm('Обновить с сохранением настроек?'))return;
+    toast('Обновление запущено...','ok');
+    var x=new XMLHttpRequest();x.open('GET',API+'?action=auto_update_keep',true);x.timeout=120000;
+    x.onload=function(){setTimeout(function(){location.reload()},15000)};
+    x.onerror=x.ontimeout=function(){setTimeout(function(){location.reload()},15000)};
+    x.send();
+}
+
+function factoryReset(){
+    if(!confirm('Сбросить ВСЕ настройки? Это действие необратимо!'))return;
+    if(!confirm('Вы ТОЧНО уверены? Плейлист, EPG, избранное — всё будет удалено.'))return;
+    var x=new XMLHttpRequest();x.open('GET',API+'?action=factory_reset',true);x.timeout=120000;
+    x.onload=function(){toast('Сброс запущен...','ok');setTimeout(function(){location.reload()},15000)};
+    x.onerror=x.ontimeout=function(){toast('Ошибка','err')};
+    x.send();
+}
+
+function mergePlaylists(){
+    var urls=document.getElementById('merge-urls').value.trim().replace(/\n/g,'+');
+    if(!urls){toast('Введите URL','err');return}
+    act('merge_playlists','urls='+encodeURIComponent(urls),function(r){
+        if(r.status==='ok')toast('Объединено! Каналов: '+(r.merged_channels||''),'ok');
+        else toast(r.message||'Ошибка','err');
+    });
+}
+
+function validatePlaylist(){
+    var url=document.getElementById('validate-url').value;
+    if(!url){toast('Введите URL','err');return}
+    act('validate_playlist','url='+encodeURIComponent(url),function(r){
+        if(r.status==='ok'&&!r.valid)toast('URL недоступен','err');
+        else if(r.valid)toast('Доступен! Каналов: '+(r.channels||''),'ok');
+        else toast(r.message||'Ошибка','err');
+    });
+}
+
+// Init — подстановка значений из конфига
+(function(){
+    var si=document.getElementById('s-pl');if(si)si.value='__PI__';
+    var se=document.getElementById('s-epg');if(se)se.value='__EI__';
+    var v=document.getElementById('admin-ver');if(v)v.textContent='OpenWrt v__VER__';
+    var f=document.getElementById('footer');if(f)f.textContent='IPTV Manager v__VER__ — OpenWrt';
+    var pn=document.getElementById('pl-name');if(pn)pn.value='__PNAME__';
+    var pu=document.getElementById('pl-u');if(pu)pu.value='__PURL__';
+    var eu=document.getElementById('epg-u');if(eu)eu.value='__EURL__';
+    var pd=document.getElementById('pl-url-display');if(pd)pd.textContent='__PURL__'||'—';
+    var ed=document.getElementById('epg-url-display');if(ed)ed.textContent='__EURL__'||'—';
+    var pl=document.getElementById('pl-last');if(pl)pl.textContent='__PLU__';
+    var el=document.getElementById('epg-last');if(el)el.textContent='__ELU__';
+    // Notice
+    if('__EURL__'===''){
+        // Check if there's a builtin EPG notice needed
+    }
+})();
+
+loadEpgMap();
+loadChannels();
+</script>
+</body>
+</html>

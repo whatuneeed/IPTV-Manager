@@ -1,6 +1,8 @@
-# IPTV Manager для OpenWrt v3.20
+# IPTV Manager для OpenWrt v3.21
 
 Скрипт для настройки IPTV на роутере OpenWrt с веб-админ панелью, встроенным HLS-плеером, EPG телепрограммой и расписанием обновлений.
+
+> **v3.21** — Модульная архитектура, валидация CGI, логирование, CI/CD
 
 ## Возможности
 
@@ -43,15 +45,92 @@
 - **Интернет**: для загрузки плейлиста и EPG
 - **Никаких дополнительных пакетов** — всё работает из коробки
 
-## Установка
+## Архитектура проекта
 
-```sh
-wget -q -O - https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh | sh
+### Модульная структура (v3.21+)
+
+```
+luci-app-iptv-manager/root/usr/share/iptv-manager/
+├── IPTV-Manager.sh          # Entry point (загружает модули)
+├── lib/
+│   ├── core.sh              # Конфигурация, утилиты, валидация
+│   ├── logger.sh            # Логирование (log_info, log_error, log_warn)
+│   ├── playlist.sh          # Загрузка, валидация, объединение плейлистов
+│   ├── epg.sh               # Загрузка и обработка EPG
+│   ├── server.sh            # HTTP-сервер, CGI, watchdog
+│   ├── scheduler.sh         # Автоматическое обновление
+│   ├── security.sh          # Rate limiting, IP whitelist, auth
+│   ├── cgi.sh               # Генерация admin.cgi с полной HTML-админкой
+│   ├── telegram.sh          # Telegram-уведомления
+│   └── catchup.sh           # Timeshift/архив передач (catchup)
+├── defaults.conf            # Настраиваемые параметры (порт, пути, таймауты)
+└── tests/
+    └── test_core.sh         # Unit-тесты (shunit2)
 ```
 
-После установки: `iptv`
+### API Endpoints
 
-> Скрипт автоматически проверяет и обновляет себя при каждом запуске.
+| Endpoint | Auth | Описание |
+|----------|------|----------|
+| `?action=health` | ❌ Нет | Health-check: server, playlist, epg, uptime |
+| `?action=check_channel` | ✅ Да | Проверка доступности канала |
+| `?action=refresh_playlist` | ✅ Да | Обновить плейлист |
+| `?action=refresh_epg` | ✅ Да | Обновить EPG |
+| `?action=system_info` | ✅ Да | RAM, disk, uptime |
+| `?action=server_status` | ✅ Да | Статус сервера |
+| `?action=server_start` | ✅ Да | Запустить сервер |
+| `?action=server_stop` | ✅ Да | Остановить сервер |
+
+### Как добавить свой модуль
+
+1. Создайте файл в `lib/ваш_модуль.sh`
+2. Добавьте его загрузку в `IPTV-Manager.sh`:
+   ```sh
+   . "$IPTV_MANAGER_DIR/lib/ваш_модуль.sh"
+   ```
+3. Используйте функции из модуля в любом месте скрипта
+
+### Безопасность
+
+- **Валидация URL** — `_validate_url()` проверяет протокол перед любым запросом
+- **Санитизация** — `_sanitize_cgi_str()` очищает входные данные CGI
+- **Rate limiting** — 60 запросов/мин с блокировкой на 5 минут
+- **Логирование** — все критичные операции пишутся через `logger`
+
+## Установка
+
+### Через LuCI (рекомендуется)
+
+```sh
+# Собрать пакет из исходников
+git clone https://github.com/whatuneeed/IPTV-Manager.git
+cd IPTV-Manager/luci-app-iptv-manager
+make package/symlinks
+make package/luci-app-iptv-manager/compile
+
+# Установить на роутер
+scp bin/packages/*/luci-app-iptv-manager_*.ipk root@192.168.1.1:/tmp/
+ssh root@192.168.1.1 "opkg install /tmp/luci-app-iptv-manager_*.ipk"
+```
+
+Или скачать `.ipk` из GitHub Releases и установить:
+```sh
+opkg install luci-app-iptv-manager_3.21-*.ipk
+```
+
+После установки: **Services → IPTV Manager** в LuCI.
+
+> Пакет автоматически включит автозапуск, настроит CGI и перезапустит rpcd.
+
+### CI/CD
+
+Проект использует GitHub Actions для автоматических проверок:
+
+| Проверка | Описание |
+|----------|----------|
+| **Shellcheck** | Анализ всех `.sh` файлов на POSIX-совместимость |
+| **Unit Tests** | Тесты core-функций через shunit2 |
+| **Structure Check** | Проверка наличия всех модулей |
 
 ## Веб-админ панель
 
@@ -150,19 +229,17 @@ scp -r luci-app-iptv-manager/root/etc/uci-defaults/ /etc/uci-defaults/
 ## FAQ
 
 **Как сбросить настройки?**
-В SSH: меню → 7) Обновление → 3) Сброс к заводским. Или удалите `/etc/iptv/*` и перезапустите.
+Через админку → Настройки → 🗑️ Сброс к заводским. Или удалите `/etc/iptv/*` и перезапустите сервер.
 
-**Как обновить скрипт вручную?**
+**Как обновить пакет?**
 ```sh
-wget -q -O - https://raw.githubusercontent.com/whatuneeed/IPTV-Manager/main/IPTV-Manager.sh | sh
+opkg update && opkg upgrade luci-app-iptv-manager
 ```
+Или скачайте новый `.ipk` и установите: `opkg install luci-app-iptv-manager_*.ipk`
 
 **Как удалить LuCI плагин?**
 ```sh
-rm -rf /www/luci-static/resources/view/iptv-manager
-rm -f /usr/share/luci/menu.d/luci-app-iptv-manager.json
-rm -f /usr/share/rpcd/acl.d/luci-app-iptv-manager.json
-/etc/init.d/rpcd restart
+opkg remove luci-app-iptv-manager
 ```
 
 **Как полностью удалить IPTV Manager?**

@@ -1,0 +1,96 @@
+name: Shellcheck & Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  shellcheck:
+    name: Shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Shellcheck on main script
+        uses: ludeeus/action-shellcheck@master
+        with:
+          check_together: 'yes'
+          format: gcc
+          severity: warning
+        env:
+          SHELLCHECK_OPTS: -s sh -e SC1090 -e SC1091
+
+      - name: Shellcheck all .sh files
+        run: |
+          find . -name "*.sh" -type f | while read -r f; do
+            echo "Checking: $f"
+            shellcheck -s sh -e SC1090,SC1091 "$f" || true
+          done
+        shell: bash
+
+  tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shunit2
+        run: |
+          if [ ! -f tests/shunit2 ]; then
+            wget -q -O tests/shunit2 https://raw.githubusercontent.com/kward/shunit2/master/shunit2
+            chmod +x tests/shunit2
+          fi
+
+      - name: Run tests
+        run: |
+          cd tests
+          chmod +x run_tests.sh
+          for f in test_*.sh; do
+            echo "── Running: $f ──"
+            bash "$f"
+            rc=$?
+            if [ $rc -ne 0 ]; then
+              FAILURES=$((FAILURES + 1))
+            fi
+            SUITES=$((SUITES + 1))
+            echo ""
+          done
+          echo "=========================================="
+          echo " Results: $SUITES suites"
+          echo "=========================================="
+          exit ${FAILURES:-0}
+
+  # Проверка что модульная структура на месте
+  structure:
+    name: Module Structure Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required modules
+        run: |
+          REQUIRED_MODULES="lib/core.sh lib/logger.sh lib/playlist.sh lib/epg.sh lib/server.sh lib/scheduler.sh lib/security.sh lib/cgi.sh lib/telegram.sh lib/catchup.sh"
+          BASE="luci-app-iptv-manager/root/usr/share/iptv-manager"
+          for mod in $REQUIRED_MODULES; do
+            if [ ! -f "$BASE/$mod" ]; then
+              echo "MISSING: $BASE/$mod"
+              exit 1
+            fi
+            echo "OK: $mod"
+          done
+          echo "All modules present"
+
+      - name: Check OpenWRT 25.x files
+        run: |
+          REQUIRED_FILES="root/etc/init.d/iptv-manager root/etc/uci-defaults/99-luci-iptv-manager root/etc/config/iptv_uhttpd"
+          BASE="luci-app-iptv-manager"
+          for f in $REQUIRED_FILES; do
+            if [ ! -f "$BASE/$f" ]; then
+              echo "MISSING: $BASE/$f"
+              exit 1
+            fi
+            echo "OK: $f"
+          done
+          echo "All OpenWRT 25.x files present"

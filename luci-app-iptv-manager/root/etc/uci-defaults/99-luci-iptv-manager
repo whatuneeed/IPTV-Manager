@@ -1,19 +1,39 @@
 #!/bin/sh
-# Add iptv config section if not exists
-uci get iptv.main >/dev/null 2>&1 || uci set iptv.main=iptv
-uci commit iptv
+# ==========================================
+# IPTV Manager — uci-defaults script
+# Runs once after package installation
+# Compatible with OpenWRT 25.x
+# ==========================================
 
-# Set ACL permissions
+# Create UCI config if not exists
+uci get iptv.main >/dev/null 2>&1 || {
+    uci set iptv.main=iptv
+    uci set iptv.main.enabled='1'
+    uci commit iptv
+}
+
+# Set proper permissions on ACL file
 chmod 644 /usr/share/rpcd/acl.d/luci-app-iptv-manager.json 2>/dev/null
 
-# Copy srv.cgi to /www/cgi-bin/ so LuCI server tab can access it
+# Ensure CGI directory exists
+mkdir -p /www/cgi-bin
+
+# Copy srv.cgi to /www/cgi-bin/ (LuCI server tab needs this)
 if [ -f /www/luci-static/resources/view/iptv-manager/srv.cgi ]; then
-    mkdir -p /www/cgi-bin
     cp /www/luci-static/resources/view/iptv-manager/srv.cgi /www/cgi-bin/srv.cgi
     chmod 755 /www/cgi-bin/srv.cgi
 fi
+
 if [ -f /www/luci-static/resources/view/iptv-manager/srv.html ]; then
     cp /www/luci-static/resources/view/iptv-manager/srv.html /www/cgi-bin/srv.html
+    chmod 644 /www/cgi-bin/srv.html
 fi
 
+# Enable and start the service
+/etc/init.d/iptv-manager enable 2>/dev/null
+
+# Restart rpcd to apply ACL changes
+/etc/init.d/rpcd restart 2>/dev/null
+
+# Clean up - this script runs only once
 exit 0

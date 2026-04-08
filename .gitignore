@@ -1,0 +1,35 @@
+# IPTV Manager — Git ignore
+*.m3u
+*.m3u8
+*.xml
+*.xml.gz
+*.log
+*.pid
+/tmp/
+/var/run/iptv-*
+/www/iptv/
+!www/iptv/.gitkeep
+**/server.html
+**/channels.json
+**/playlist.m3u
+**/admin.cgi
+**/epg.cgi
+
+# OS files
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Editor files
+.vscode/
+.idea/
+*~
+*.swp
+*.swo
+
+# Build artifacts
+*.bak
+*.backup
+
+# Qwen local settings
+.qwen/
