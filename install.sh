@@ -286,6 +286,32 @@ full_uninstall() {
 LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 [ -z "$LAN_IP" ] && LAN_IP="192.168.1.1"
 
+# ============================
+# Interactive vs Automatic mode
+# ============================
+# If stdin is a pipe (wget | sh), run automatically.
+# If stdin is a terminal, show menu.
+if [ -t 0 ]; then
+    # Interactive mode — terminal
+    INTERACTIVE=1
+    read_choice() {
+        echo -ne "${YELLOW}> ${NC}"
+        read choice </dev/tty
+    }
+else
+    # Automatic mode — pipe from wget
+    INTERACTIVE=0
+    read_choice() {
+        if is_installed; then
+            # Already installed — auto-update
+            choice="1"
+        else
+            # Fresh install
+            choice="1"
+        fi
+    }
+fi
+
 echo -e "${GREEN}══════════════════════════════════════════${NC}"
 echo -e "     ${GREEN}IPTV Manager v3.21${NC}"
 echo -e "${GREEN}══════════════════════════════════════════${NC}"
@@ -304,8 +330,7 @@ if is_installed; then
     echo ""
     echo -e "  ${CYAN}0) Выход${NC}"
     echo ""
-    echo -ne "${YELLOW}> ${NC}"
-    read choice
+    read_choice
     case "$choice" in
         1)
             echo_info "Обновление IPTV Manager..."
@@ -330,8 +355,7 @@ else
     echo ""
     echo -e "  ${CYAN}0) Выход${NC}"
     echo ""
-    echo -ne "${YELLOW}> ${NC}"
-    read choice
+    read_choice
     case "$choice" in
         1)
             echo_info "Установка IPTV Manager..."
