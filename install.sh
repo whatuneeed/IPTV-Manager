@@ -33,7 +33,10 @@ dl() {
 # Check if installed
 # ============================
 is_installed() {
-    [ -f /usr/share/iptv-manager/IPTV-Manager.sh ] && [ -f /etc/init.d/iptv-manager ]
+    # Check new modular path OR old monolith path
+    [ -f /usr/share/iptv-manager/IPTV-Manager.sh ] || \
+    [ -f /etc/iptv/IPTV-Manager.sh ] || \
+    [ -f /etc/init.d/iptv-manager ]
 }
 
 get_status() {
@@ -289,28 +292,14 @@ LAN_IP=$(uci get network.lan.ipaddr 2>/dev/null | cut -d/ -f1)
 # ============================
 # Interactive vs Automatic mode
 # ============================
-# If stdin is a pipe (wget | sh), run automatically.
-# If stdin is a terminal, show menu.
-if [ -t 0 ]; then
-    # Interactive mode — terminal
-    INTERACTIVE=1
-    read_choice() {
-        echo -ne "${YELLOW}> ${NC}"
-        read choice </dev/tty
+# Always show menu and read from /dev/tty (works both in terminal and via wget pipe)
+read_choice() {
+    echo -ne "${YELLOW}> ${NC}"
+    read choice </dev/tty 2>/dev/null || {
+        # Fallback if /dev/tty not available — auto-install
+        choice="1"
     }
-else
-    # Automatic mode — pipe from wget
-    INTERACTIVE=0
-    read_choice() {
-        if is_installed; then
-            # Already installed — auto-update
-            choice="1"
-        else
-            # Fresh install
-            choice="1"
-        fi
-    }
-fi
+}
 
 echo -e "${GREEN}══════════════════════════════════════════${NC}"
 echo -e "     ${GREEN}IPTV Manager v3.21${NC}"
